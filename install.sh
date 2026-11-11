@@ -4,7 +4,7 @@
 set -euo pipefail
 
 PLUGIN_VERSION="1.1.71-rc2.1"
-HOST_VERSION="0.2.1-rc.2"
+HOST_VERSION="0.2.0-rc.2"
 PKG="https://github.com/evan545295555-hash/Evans-repo/releases/download/v${PLUGIN_VERSION}/dsh-purge-${PLUGIN_VERSION}.tgz"
 DSH_HOME_DIR="${DSH_HOME:-$HOME/.dsh}"
 
@@ -33,7 +33,7 @@ if command -v dsh >/dev/null 2>&1; then
     need_host=0
     ok "宿主 $cur"
   elif [ -n "$cur" ]; then
-    warn "宿主版本 $cur，切换到 $HOST_VERSION"
+    warn "宿主版本 $cur，对齐到 $HOST_VERSION（补丁只支持到 0.2.0）"
   fi
 fi
 if [ "$need_host" -eq 1 ]; then
@@ -135,6 +135,8 @@ fi
 cat <<'EOT'
 
 ════ 下一步（必须做，否则看不到插件）════
+  0. 首次启动前先设（只在当前 shell 有效）：
+       export REDTEAM_PRESET_REFRESH=1
   1. 完全退出 DeepSeek Harness（不是关窗口）
   2. 重新打开宿主
   3. 点会话标题旁的 dsh-purge → 清洗 → 应用

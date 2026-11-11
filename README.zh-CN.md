@@ -183,7 +183,7 @@ irm https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/insta
 | # | 步骤 | 说明 |
 |---|---|---|
 | 1 | 检查 Node.js | 需要 18 以上 |
-| 2 | 安装/校准宿主 | `@deepseek-ai/dsh@0.2.1-rc.2` |
+| 2 | 安装/校准宿主 | `@deepseek-ai/dsh@0.2.0-rc.2` |
 | 3 | 创建 profile | `%USERPROFILE%\.dsh\profiles\web` |
 | 4 | npm 直装插件 | `npm install --save`，绕开 `dsh plugin` |
 | 5 | 登记 bundles | 跑 `ensure-profile-bundle.mjs` |

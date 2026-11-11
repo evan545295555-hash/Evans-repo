@@ -191,7 +191,7 @@ The script does six things:
 | # | Step | Detail |
 |---|---|---|
 | 1 | Check Node.js | requires 18+ |
-| 2 | Install/pin host | `@deepseek-ai/dsh@0.2.1-rc.2` |
+| 2 | Install/pin host | `@deepseek-ai/dsh@0.2.0-rc.2` |
 | 3 | Create profile | `%USERPROFILE%\.dsh\profiles\web` |
 | 4 | npm install plugin | `npm install --save`, bypassing `dsh plugin` |
 | 5 | Register bundles | runs `ensure-profile-bundle.mjs` |

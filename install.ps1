@@ -3,7 +3,7 @@
 $ErrorActionPreference = "Stop"
 
 $PluginVersion = "1.1.71-rc2.1"
-$HostVersion   = "0.2.1-rc.2"
+$HostVersion   = "0.2.0-rc.2"
 $PkgUrl = "https://github.com/evan545295555-hash/Evans-repo/releases/download/v$PluginVersion/dsh-purge-$PluginVersion.tgz"
 $DshHomeDir = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE ".dsh" }
 
@@ -43,11 +43,18 @@ try {
 } catch { }
 
 if ($installedHost) {
-  Ok "已装宿主 $installedHost"
-  if ($installedHost -ne $HostVersion) {
-    Warn "宿主是 $installedHost，脚本按 $HostVersion 验证；继续用现有版本"
+  if ($installedHost -eq $HostVersion) {
+    Ok "已装宿主 $installedHost"
+    $needHost = $false
+  } else {
+    # 补丁只支持到 0.2.0；版本不对必须对齐，否则「应用」会取物失败
+    Warn "宿主是 $installedHost，需要 $HostVersion（补丁只支持到 0.2.0）"
+    Say "对齐宿主版本到 $HostVersion"
+    npm i -g "@deepseek-ai/dsh@$HostVersion" --force
+    if ($LASTEXITCODE -ne 0) { Die "宿主对齐失败：$LASTEXITCODE" }
+    Ok "宿主已对齐到 $HostVersion"
+    $needHost = $false
   }
-  $needHost = $false
 } elseif (Get-Command dsh -ErrorAction SilentlyContinue) {
   Ok "dsh 命令存在（版本号读不到，按已安装处理）"
   $needHost = $false
@@ -165,6 +172,8 @@ if (Test-Path $statusFile) {
 
 Write-Host ""
 Write-Host "════ 下一步（必须做，否则看不到插件）════" -ForegroundColor Yellow
+Write-Host "  0. 首次启动前先设（只在当前窗口有效）：" -ForegroundColor Cyan
+Write-Host "       `$env:REDTEAM_PRESET_REFRESH = `"1`""
 Write-Host "  1. 完全退出 DeepSeek Harness（托盘右键退出，不是关窗口）"
 Write-Host "  2. 重新打开宿主"
 Write-Host "  3. 点会话标题旁的 dsh-purge → 清洗 → 应用"
