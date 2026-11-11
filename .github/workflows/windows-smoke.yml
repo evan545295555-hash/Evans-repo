@@ -229,3 +229,30 @@ jobs:
           if ($repo -match "YuJunZhiXue|HunYiSage") {
             throw "REPO 仍指向第三方仓库：$repo"
           }
+
+      - name: 端到端执行 install.ps1（模拟全新用户）
+        shell: pwsh
+        run: |
+          Write-Host "=== 清空 DSH_HOME，模拟全新环境 ==="
+          Remove-Item -Recurse -Force $env:DSH_HOME -ErrorAction SilentlyContinue
+          Write-Host "  已删除: $env:DSH_HOME"
+
+          Write-Host "=== 执行仓库根目录的 install.ps1 ==="
+          $script = Join-Path $env:GITHUB_WORKSPACE "install.ps1"
+          if (-not (Test-Path $script)) { throw "install.ps1 不存在" }
+          & $script
+          if ($LASTEXITCODE -ne 0) { throw "install.ps1 退出码 $LASTEXITCODE" }
+
+          Write-Host "=== 安装后独立验证 ==="
+          $profile = Join-Path $env:DSH_HOME "profiles\web"
+          $pkg = Join-Path $profile "node_modules\dsh-purge\package.json"
+          if (-not (Test-Path $pkg)) { throw "脚本跑完但包不存在" }
+          $v = (Get-Content $pkg -Raw | ConvertFrom-Json).version
+          Write-Host "  version: $v"
+          if ($v -ne "1.1.71-rc2.1") { throw "版本不符: $v" }
+
+          $dep = (Get-Content (Join-Path $profile "package.json") -Raw | ConvertFrom-Json).dependencies.'dsh-purge'
+          Write-Host "  dependencies.dsh-purge: $dep"
+          if (-not $dep) { throw "依赖未声明" }
+
+          Write-Host "=== install.ps1 端到端通过 ==="
