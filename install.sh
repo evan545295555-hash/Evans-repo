@@ -25,6 +25,17 @@ if [ "$NODE_MAJOR" -lt 20 ]; then
 fi
 ok "Node $(node -v)"
 
+# ── 1.5) npm 安装策略必须是 hoisted ────────────────────────
+# 插件按「依赖摊平」检测宿主；nested 布局会被判成"没写进全部宿主"。
+STRATEGY="$(npm config get install-strategy 2>/dev/null | tr -d '[:space:]')"
+if [ "$STRATEGY" != "hoisted" ]; then
+  warn "npm 安装策略是 '$STRATEGY'，改为 hoisted（插件要求摊平布局）"
+  npm config set install-strategy hoisted >/dev/null 2>&1 || die "无法设置 install-strategy"
+  ok "已设为 hoisted"
+else
+  ok "npm 策略 hoisted"
+fi
+
 # ── 2) 宿主 ────────────────────────────────────────────────
 need_host=1
 if command -v dsh >/dev/null 2>&1; then
@@ -41,6 +52,21 @@ if [ "$need_host" -eq 1 ]; then
   npm i -g "@deepseek-ai/dsh@${HOST_VERSION}" || die "宿主安装失败"
   ok "宿主已安装"
 fi
+
+# ── 2.5) 布局验证 ─────────────────────────────────────────
+NPM_ROOT="$(npm root -g)"
+SP_PATH="$NPM_ROOT/@deepseek-ai/dsh-system-prompt/lib/index.js"
+if [ ! -f "$SP_PATH" ]; then
+  warn "宿主是嵌套布局，插件检测不到。用 hoisted 重装…"
+  npm i -g "@deepseek-ai/dsh@${HOST_VERSION}" --force || die "重装宿主失败"
+  if [ ! -f "$SP_PATH" ]; then
+    die "重装后仍是嵌套布局：$SP_PATH 不存在。
+    请手动执行：npm config set install-strategy hoisted
+                npm i -g @deepseek-ai/dsh@${HOST_VERSION} --force"
+  fi
+  ok "已重装为摊平布局"
+fi
+ok "布局检查通过（dsh-system-prompt 在顶层）"
 
 # ── 3) profile 目录 ────────────────────────────────────────
 PROFILE_DIR="$DSH_HOME_DIR/profiles/web"

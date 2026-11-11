@@ -32,6 +32,22 @@ if ($major -lt 20) {
 }
 Ok "Node $nodeVerRaw"
 
+# ── 1.5) npm 安装策略必须是 hoisted ────────────────────────
+# 插件按「依赖摊平」检测宿主（找 @deepseek-ai/dsh-system-prompt）。
+# npm 若用 nested 布局，依赖埋在 dsh/node_modules 里，检测永远失败，
+# 表现为「应用」报：清洗没有写进全部宿主。
+$strategy = ""
+try { $strategy = ("$(npm config get install-strategy 2>$null)").Trim() } catch { }
+if ($strategy -ne "hoisted") {
+  Warn "npm 安装策略是 '$strategy'，改为 hoisted（插件要求摊平布局）"
+  npm config set install-strategy hoisted 2>&1 | Out-Null
+  $strategy = ("$(npm config get install-strategy 2>$null)").Trim()
+  if ($strategy -ne "hoisted") { Die "无法设置 install-strategy=hoisted" }
+  Ok "已设为 hoisted"
+} else {
+  Ok "npm 策略 hoisted"
+}
+
 # ── 2) 宿主 ────────────────────────────────────────────────
 # 用 npm ls 读全局版本，不依赖 dsh --version。
 # Windows 上 dsh --version 常无输出，会导致误判"版本不对"而重装 830MB。
@@ -66,6 +82,20 @@ if ($needHost) {
   if ($LASTEXITCODE -ne 0) { Die "宿主安装失败：$LASTEXITCODE" }
   Ok "宿主已安装"
 }
+
+# ── 2.5) 布局验证：dsh-system-prompt 必须在顶层 ──────────
+$npmRoot = (npm root -g).Trim()
+$spPath = Join-Path $npmRoot "@deepseek-ai\dsh-system-prompt\lib\index.js"
+if (-not (Test-Path $spPath)) {
+  Warn "宿主是嵌套布局，插件检测不到。用 hoisted 重装…"
+  npm i -g "@deepseek-ai/dsh@$HostVersion" --force
+  if ($LASTEXITCODE -ne 0) { Die "重装宿主失败：$LASTEXITCODE" }
+  if (-not (Test-Path $spPath)) {
+    Die ("重装后仍是嵌套布局：$spPath 不存在。`n    请手动执行：`n      npm config set install-strategy hoisted`n      npm i -g @deepseek-ai/dsh@$HostVersion --force")
+  }
+  Ok "已重装为摊平布局"
+}
+Ok "布局检查通过（dsh-system-prompt 在顶层）"
 
 # ── 3) profile 目录 ────────────────────────────────────────
 $profileDir = Join-Path $DshHomeDir "profiles\web"
