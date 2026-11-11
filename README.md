@@ -176,6 +176,57 @@ For the desktop client you can also click the button (`dsh://` deep link):
   <a href="dsh://plugin/install?id=dsh-purge&name=dsh-purge&version=1.1.71&repo=evan545295555-hash%2FEvans-repo&permissions=%E7%B3%BB%E7%BB%9F%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%B3%A8%E5%85%A5%2C%E6%9C%AC%E6%9C%BA%E8%A1%A5%E4%B8%81%2C%E8%AE%BE%E7%BD%AE%E9%A1%B5&downloadUrl=https%3A%2F%2Fgithub.com%2Fevan545295555-hash%2FEvans-repo%2Farchive%2Frefs%2Fheads%2Fmaster.tar.gz"><strong>Install in desktop client</strong></a>
 </p>
 
+
+### Windows one-click install (recommended)
+
+> **Important**: `dsh plugin add` is broken on Windows — it returns success but never writes the package into `node_modules`.
+> Use the command below; it bypasses `dsh plugin`.
+
+```powershell
+irm https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/install.ps1 | iex
+```
+
+The script does six things:
+
+| # | Step | Detail |
+|---|---|---|
+| 1 | Check Node.js | requires 18+ |
+| 2 | Install/pin host | `@deepseek-ai/dsh@0.2.1-rc.2` |
+| 3 | Create profile | `%USERPROFILE%\.dsh\profiles\web` |
+| 4 | npm install plugin | `npm install --save`, bypassing `dsh plugin` |
+| 5 | Register bundles | runs `ensure-profile-bundle.mjs` |
+| 6 | File-level checks | version / dependency / `cordis.patch.yml` / key files |
+
+Success looks like:
+
+```
+OK  installed: dsh-purge 1.1.71-rc2.1
+```
+
+**Then restart the host** (quit from tray, reopen), and click **dsh-purge → Clean → Apply**.
+
+#### Manual fallback
+
+```powershell
+$p = "$env:USERPROFILE\.dsh\profiles\web"
+New-Item -ItemType Directory -Force -Path $p | Out-Null
+Set-Location $p
+if (-not (Test-Path package.json)) {
+  '{"name":"dsh-profile-web","private":true,"dependencies":{}}' | Set-Content package.json
+}
+npm install --save --ignore-scripts https://github.com/evan545295555-hash/Evans-repo/releases/download/v1.1.71-rc2.1/dsh-purge-1.1.71-rc2.1.tgz
+node node_modules\dsh-purge\scripts\ensure-profile-bundle.mjs
+```
+
+#### Windows troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `dsh --version` prints nothing | upstream Windows bug | harmless; script works around it |
+| `dsh plugin add` says ok but installs nothing | same bug | use the one-click script |
+| `Cannot find module ... ensure-profile-bundle.mjs` | package not in `node_modules` | make sure `npm install --save` ran |
+| UI unchanged after install | host not restarted / Apply not clicked | quit tray, reopen, click Apply |
+
 ### After the command: three steps
 
 Adding the plugin to a profile does **not** patch `@deepseek-ai` by itself.
