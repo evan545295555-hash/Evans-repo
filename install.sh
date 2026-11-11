@@ -18,7 +18,11 @@ say "dsh-purge ${PLUGIN_VERSION} 安装器（macOS / Linux）"
 # ── 1) Node ────────────────────────────────────────────────
 command -v node >/dev/null 2>&1 || die "没检测到 Node.js。先装它：https://nodejs.org"
 NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
-[ "$NODE_MAJOR" -ge 18 ] || die "Node 版本太低（$(node -v)），需要 18 以上"
+if [ "$NODE_MAJOR" -lt 20 ]; then
+  die "Node 版本太低（$(node -v)）。宿主依赖要求 Node 20+。
+    macOS: brew install node@22  或从 https://nodejs.org 装 LTS
+    Linux: 用 nvm 或发行版的 nodejs 20+"
+fi
 ok "Node $(node -v)"
 
 # ── 2) 宿主 ────────────────────────────────────────────────

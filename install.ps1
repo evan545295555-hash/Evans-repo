@@ -27,7 +27,9 @@ if ($nodeVerRaw -notmatch 'v?(\d+)\.') {
   Die "无法识别 Node 版本。原始输出：[$nodeVerRaw]  请手动确认 node -v 能正常输出版本号"
 }
 $major = [int]$Matches[1]
-if ($major -lt 18) { Die "Node 版本太低（$nodeVerRaw），需要 18 以上" }
+if ($major -lt 20) {
+  Die "Node 版本太低（$nodeVerRaw）。宿主依赖 powershell-utils / is-in-ssh 要求 Node 20+。`n    升级： winget install OpenJS.NodeJS.LTS`n    装完关掉 PowerShell 重开，node -v 确认 v20 以上。"
+}
 Ok "Node $nodeVerRaw"
 
 # ── 2) 宿主 ────────────────────────────────────────────────
