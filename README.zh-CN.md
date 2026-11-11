@@ -168,6 +168,57 @@ Harness 不只是把问题交给模型。它还会在运行时改提示词、审
   <a href="dsh://plugin/install?id=dsh-purge&name=dsh-purge&version=1.1.71&repo=evan545295555-hash%2FEvans-repo&permissions=%E7%B3%BB%E7%BB%9F%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%B3%A8%E5%85%A5%2C%E6%9C%AC%E6%9C%BA%E8%A1%A5%E4%B8%81%2C%E8%AE%BE%E7%BD%AE%E9%A1%B5&downloadUrl=https%3A%2F%2Fgithub.com%2Fevan545295555-hash%2FEvans-repo%2Farchive%2Frefs%2Fheads%2Fmaster.tar.gz"><strong>唤起客户端一键安装</strong></a>
 </p>
 
+
+### Windows 一键安装（推荐）
+
+> **重要**：Windows 上 `dsh plugin add` 有已知问题——返回成功但不会把包装进 `node_modules`。
+> 请用下面这条命令，它绕开了 `dsh plugin`。
+
+```powershell
+irm https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/install.ps1 | iex
+```
+
+脚本依次做六件事：
+
+| # | 步骤 | 说明 |
+|---|---|---|
+| 1 | 检查 Node.js | 需要 18 以上 |
+| 2 | 安装/校准宿主 | `@deepseek-ai/dsh@0.2.1-rc.2` |
+| 3 | 创建 profile | `%USERPROFILE%\.dsh\profiles\web` |
+| 4 | npm 直装插件 | `npm install --save`，绕开 `dsh plugin` |
+| 5 | 登记 bundles | 跑 `ensure-profile-bundle.mjs` |
+| 6 | 文件级验证 | 版本 / 依赖 / `cordis.patch.yml` / 关键文件 |
+
+看到这一行就是成功了：
+
+```
+OK  安装完成：dsh-purge 1.1.71-rc2.1
+```
+
+**装完记得重启宿主**（退出托盘再打开），然后在会话标题旁点 **dsh-purge → 清洗 → 应用**。
+
+#### 手动兜底（脚本跑不动时）
+
+```powershell
+$p = "$env:USERPROFILE\.dsh\profiles\web"
+New-Item -ItemType Directory -Force -Path $p | Out-Null
+Set-Location $p
+if (-not (Test-Path package.json)) {
+  '{"name":"dsh-profile-web","private":true,"dependencies":{}}' | Set-Content package.json
+}
+npm install --save --ignore-scripts https://github.com/evan545295555-hash/Evans-repo/releases/download/v1.1.71-rc2.1/dsh-purge-1.1.71-rc2.1.tgz
+node node_modules\dsh-purge\scripts\ensure-profile-bundle.mjs
+```
+
+#### Windows 排错
+
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| `dsh --version` 无输出 | 上游 Windows 兼容问题 | 不影响安装，脚本已绕过 |
+| `dsh plugin add` 返回成功但没装 | 同上 | 用一键脚本或手动兜底 |
+| `Cannot find module ... ensure-profile-bundle.mjs` | 包没进 `node_modules` | 确认用了 `npm install --save` |
+| 装完界面没变化 | 没重启宿主 / 没点「应用」 | 退出托盘重开，再点应用 |
+
 ### 装完都要做这三步
 
 只把插件写进 profile **还不会**改 `@deepseek-ai`。
