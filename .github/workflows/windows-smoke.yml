@@ -1,24 +1,28 @@
 name: windows-smoke
 
-# 目的：在没有 Windows 机器的情况下，验证插件能在真正的 Windows 上
-#   1) 装进 profile    2) 被 dsh 加载（dump-config 条目数=1）  3) 版本号正确
-# 不验证：浏览器界面、模型对话（那需要真机或虚拟机）。
+# 目的：在真实 Windows 上验证插件可用性
+#   1) 装进 profile  2) 被 dsh 加载（dump-config 条目数=1）  3) 版本号正确
+# 不验证：浏览器界面、模型对话（需真机或虚拟机）。
+#
+# 历史：此前 `dsh` 在 pwsh 下静默失败（无输出、无报错、目录未创建）。
+# 现在显式解析 dsh.cmd 并检查每一步 exit code。
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
     paths:
       - "package.json"
       - "lib/**"
       - "cordis.patch.yml"
       - "scripts/**"
+      - "install.ps1"
       - ".github/workflows/windows-smoke.yml"
   workflow_dispatch:
 
 jobs:
   install:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v4
@@ -28,27 +32,78 @@ jobs:
           node-version: 20
 
       - name: 安装宿主 DSH 0.2.1-rc.2
-        run: npm i -g @deepseek-ai/dsh@0.2.1-rc.2
+        shell: pwsh
+        run: |
+          npm i -g @deepseek-ai/dsh@0.2.1-rc.2
+          if ($LASTEXITCODE -ne 0) { throw "npm i -g 失败: $LASTEXITCODE" }
+
+      - name: 解析 dsh 可执行文件
+        id: resolve
+        shell: pwsh
+        run: |
+          Write-Host "--- 所有 dsh 候选 ---"
+          Get-Command dsh -All -ErrorAction SilentlyContinue |
+            Select-Object Name, CommandType, Source | Format-Table -AutoSize | Out-String | Write-Host
+
+          # .ps1 包装器在非交互 pwsh 下可能不执行，优先用 .cmd
+          $candidates = @(
+            (Get-Command dsh.cmd -ErrorAction SilentlyContinue | Select-Object -First 1).Source,
+            (Join-Path (npm prefix -g) "dsh.cmd"),
+            (Join-Path (npm prefix -g) "dsh.ps1")
+          ) | Where-Object { $_ -and (Test-Path $_) }
+
+          if (-not $candidates) { throw "找不到 dsh 可执行文件" }
+          $dsh = $candidates[0]
+          Write-Host "选用: $dsh"
+
+          "DSH_CMD=$dsh"     | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "DSH_HOME=$(Join-Path $env:USERPROFILE '.dsh')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: 宿主版本
-        run: dsh --version
+        shell: pwsh
+        run: |
+          $out = & $env:DSH_CMD --version 2>&1 | Out-String
+          Write-Host "输出: $out"
+          Write-Host "exit: $LASTEXITCODE"
+          if ($LASTEXITCODE -ne 0) { throw "dsh --version 失败: $LASTEXITCODE" }
+          if (-not $out.Trim()) { throw "dsh --version 无输出（包装器未执行）" }
 
       - name: 打包插件
-        run: npm pack
+        shell: pwsh
+        run: |
+          npm pack
+          if ($LASTEXITCODE -ne 0) { throw "npm pack 失败" }
+          Get-ChildItem -Filter "dsh-purge-*.tgz" | Select-Object Name, Length
 
-      - name: 生成空 profile
-        run: dsh --profile web --dump-config | Out-Null
+      - name: 生成 profile
+        shell: pwsh
+        run: |
+          & $env:DSH_CMD --profile web --dump-config | Out-Null
+          $code = $LASTEXITCODE
+          Write-Host "dump-config exit: $code"
+
+          $dir = Join-Path $env:DSH_HOME "profiles\web"
+          if (-not (Test-Path $dir)) {
+            Write-Host "dsh 未创建 profile，手动创建: $dir"
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            $env:DSH_HOME | Out-Null
+            & $env:DSH_CMD --profile web --dump-config | Out-Null
+          }
+
+          if (-not (Test-Path $dir)) { throw "profile 仍不存在: $dir" }
+          Write-Host "--- profile 内容 ---"
+          Get-ChildItem $dir -Force | Select-Object -ExpandProperty Name | Write-Host
 
       - name: 诊断路径
         shell: pwsh
         run: |
           Write-Host "USERPROFILE = $env:USERPROFILE"
-          Write-Host "dsh 位置   = $((Get-Command dsh).Source)"
-          Write-Host "--- $env:USERPROFILE 下的隐藏目录 ---"
-          Get-ChildItem $env:USERPROFILE -Force -Directory | Select-Object -ExpandProperty Name
+          Write-Host "DSH_HOME    = $env:DSH_HOME"
+          Write-Host "DSH_CMD     = $env:DSH_CMD"
           Write-Host "--- .dsh 树 ---"
-          if (Test-Path "$env:USERPROFILE\.dsh") {
-            Get-ChildItem "$env:USERPROFILE\.dsh" -Recurse -Depth 2 -Force | Select-Object -First 40 -ExpandProperty FullName
+          if (Test-Path $env:DSH_HOME) {
+            Get-ChildItem $env:DSH_HOME -Recurse -Depth 2 -Force |
+              Select-Object -First 40 -ExpandProperty FullName | Write-Host
           } else { Write-Host "没有 .dsh 目录" }
 
       - name: 安装插件
@@ -56,20 +111,23 @@ jobs:
         run: |
           $tgz = Get-ChildItem -Filter "dsh-purge-*.tgz" | Select-Object -First 1
           Write-Host "installing $($tgz.Name)"
-          dsh plugin --profile web add --ignore-scripts $tgz.FullName
+          & $env:DSH_CMD plugin --profile web add --ignore-scripts $tgz.FullName
+          Write-Host "install exit: $LASTEXITCODE"
+          if ($LASTEXITCODE -ne 0) { throw "dsh plugin add 失败: $LASTEXITCODE" }
 
       - name: 登记到 profile
         shell: pwsh
         run: |
-          $profileDir = Join-Path $env:USERPROFILE ".dsh\profiles\web"
+          $profileDir = Join-Path $env:DSH_HOME "profiles\web"
           if (-not (Test-Path $profileDir)) { throw "profile 不存在：$profileDir" }
           Set-Location $profileDir
           node node_modules/dsh-purge/scripts/ensure-profile-bundle.mjs
+          if ($LASTEXITCODE -ne 0) { throw "ensure-profile-bundle 失败: $LASTEXITCODE" }
 
       - name: 断言版本号
         shell: pwsh
         run: |
-          Set-Location "$env:USERPROFILE\.dsh\profiles\web"
+          Set-Location (Join-Path $env:DSH_HOME "profiles\web")
           $v = node -p "require('./node_modules/dsh-purge/package.json').version"
           Write-Host "installed version: $v"
           if ($v -ne "1.1.71-rc2.1") { throw "版本不符：$v" }
@@ -77,15 +135,30 @@ jobs:
       - name: 断言挂载条目数
         shell: pwsh
         run: |
-          $n = (dsh --profile web --dump-config | Select-String -Pattern '^- id: dsh-purge$').Count
+          $cfg = & $env:DSH_CMD --profile web --dump-config 2>&1 | Out-String
+          $n = ([regex]::Matches($cfg, '(?m)^- id: dsh-purge$')).Count
           Write-Host "dsh-purge entries: $n"
-          if ($n -ne 1) { throw "预期 1 条，实际 $n 条" }
+          if ($n -ne 1) {
+            Write-Host "--- dump-config 前 40 行 ---"
+            ($cfg -split "`n" | Select-Object -First 40) | Write-Host
+            throw "预期 1 条，实际 $n 条"
+          }
 
       - name: 关键文件存在性
         shell: pwsh
         run: |
-          $base = "$env:USERPROFILE\.dsh\profiles\web\node_modules\dsh-purge"
+          $base = Join-Path $env:DSH_HOME "profiles\web\node_modules\dsh-purge"
           foreach ($f in @("lib\identity.js", "lib\core.js", "cordis.patch.yml", "client.js", "bin\dsh-purge.js")) {
             if (-not (Test-Path (Join-Path $base $f))) { throw "缺少 $f" }
           }
           Write-Host "关键文件齐全"
+
+      - name: 更新链接指向校验
+        shell: pwsh
+        run: |
+          $f = Join-Path $env:DSH_HOME "profiles\web\node_modules\dsh-purge\lib\update.js"
+          $repo = (Select-String -Path $f -Pattern '^const REPO = "([^"]+)"').Matches[0].Groups[1].Value
+          Write-Host "update.js REPO = $repo"
+          if ($repo -match "YuJunZhiXue|HunYiSage") {
+            throw "REPO 仍指向第三方仓库：$repo"
+          }
