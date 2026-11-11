@@ -113,6 +113,29 @@ if (Test-Path $upd) {
 
 Write-Host ""
 Ok "安装完成：dsh-purge $v"
-Write-Host "   重启 DeepSeek Harness 生效"
-Write-Host "   启动： dsh web"
-Write-Host "   回滚： 删除 $profileDir\node_modules\dsh-purge 后重跑 dsh --profile web --dump-config"
+
+# ── 10) 红队模式注册状态 ───────────────────────────────────
+$statusFile = Join-Path $DshHomeDir "redteam\preset-declare.json"
+if (Test-Path $statusFile) {
+  try {
+    $st = Get-Content $statusFile -Raw | ConvertFrom-Json
+    Write-Host "红队模式状态：$($st.phase)（plugins=$($st.plugins)）" -ForegroundColor Cyan
+    if ($st.phase -eq 'registered') { Ok "红队模式已注册" }
+    else { Warn "红队模式未完成注册，请按下面第 3 步操作" }
+  } catch { Warn "preset-declare.json 解析失败" }
+} else {
+  Write-Host "红队模式：尚未注册" -ForegroundColor Yellow
+}
+
+Write-Host ""
+Write-Host "════ 下一步（必须做，否则看不到插件）════" -ForegroundColor Yellow
+Write-Host "  1. 完全退出 DeepSeek Harness（托盘右键退出，不是关窗口）"
+Write-Host "  2. 重新打开宿主"
+Write-Host "  3. 点会话标题旁的 dsh-purge → 清洗 → 应用"
+Write-Host "  4. 它会自动重启一次"
+Write-Host "  5. 再开，模式下拉里就有「红队模式」"
+Write-Host ""
+Write-Host "  检查注册状态：" -ForegroundColor Cyan
+Write-Host "    type `$env:USERPROFILE\.dsh\redteam\preset-declare.json"
+Write-Host ""
+Write-Host "  回滚：删除 $profileDir\node_modules\dsh-purge"

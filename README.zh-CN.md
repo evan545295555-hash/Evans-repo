@@ -229,6 +229,52 @@ node node_modules\dsh-purge\scripts\ensure-profile-bundle.mjs
 
 Web 的控件只动 Web，桌面端的只动桌面应用。不要在一个宿主里点另一个宿主的应用。
 
+
+### 红队模式怎么出来
+
+装完插件**不会自动出现红队模式**——它是插件运行时注册的，必须走完整流程：
+
+```
+1. 完全退出宿主（托盘右键退出，不是关窗口）
+2. 重新打开
+3. 点会话标题旁的 dsh-purge → 清洗 → 应用
+4. 它会自动重启一次
+5. 模式下拉里出现「红队模式」
+```
+
+**验证注册状态**：
+
+```powershell
+type $env:USERPROFILE\.dsh\redteam\preset-declare.json
+```
+
+| 输出 | 含义 | 处理 |
+|---|---|---|
+| 文件不存在 | 插件没加载 | 检查 profile 是否装对、是否重启 |
+| `"phase": "apply-start"` | 加载了但注册没完成 | 确认点了「应用」，或宿主版本不匹配 |
+| `"phase": "registered"` | ✅ 注册成功 | 重启后可见 |
+
+正常内容：
+
+```json
+{
+  "ok": true,
+  "phase": "registered",
+  "id": "redteam",
+  "name": "红队模式",
+  "plugins": 19,
+  "broken": null
+}
+```
+
+**80% 的"看不到红队模式"是 profile 装错**：插件装在 `web`，但你开的是桌面 EXE（读 `desktop`）。
+
+```powershell
+dir $env:USERPROFILE\.dsh\profiles\
+```
+
+确认你有几个 profile，插件要装在**你正在用的那个**。
+
 ### 怎样算装上了
 
 - 会话标题旁有 **dsh-purge**，点开后在「清洗」里能点「应用」。

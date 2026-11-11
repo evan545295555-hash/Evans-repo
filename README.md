@@ -237,6 +237,31 @@ Adding the plugin to a profile does **not** patch `@deepseek-ai` by itself.
 
 Web controls affect Web only; desktop controls affect the desktop app only. Do not Apply one host from the other.
 
+
+### How the Red Team preset appears
+
+Installing the plugin does **not** create the preset automatically — it is registered at runtime:
+
+```
+1. Fully quit the host (tray → Quit, not just close the window)
+2. Reopen it
+3. Click dsh-purge next to the session title → Clean → Apply
+4. It restarts once automatically
+5. "Red Team" appears in the mode dropdown
+```
+
+**Verify registration**:
+
+```powershell
+type $env:USERPROFILE\.dsh\redteam\preset-declare.json
+```
+
+| Output | Meaning | Action |
+|---|---|---|
+| file missing | plugin never loaded | check profile + restart |
+| `"phase": "apply-start"` | loaded but not registered | click Apply, or host version mismatch |
+| `"phase": "registered"` | OK | visible after restart |
+
 ### How to tell it installed
 
 - **dsh-purge** sits beside the session title, with **Apply** on its Clean page.

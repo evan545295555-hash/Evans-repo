@@ -95,5 +95,29 @@ fi
 
 echo
 ok "安装完成：dsh-purge $V"
-echo "   重启 DeepSeek Harness 生效"
-echo "   启动： dsh web"
+
+# ── 10) 红队模式注册状态 ──────────────────────────────────
+STATUS="$DSH_HOME_DIR/redteam/preset-declare.json"
+if [ -f "$STATUS" ]; then
+  PHASE="$(node -p "try{require('$STATUS').phase}catch(e){''}" 2>/dev/null || echo '')"
+  if [ "$PHASE" = "registered" ]; then
+    ok "红队模式已注册"
+  else
+    warn "红队模式状态：${PHASE:-未知}，需按下面步骤操作"
+  fi
+else
+  warn "红队模式：尚未注册"
+fi
+
+cat <<'EOT'
+
+════ 下一步（必须做，否则看不到插件）════
+  1. 完全退出 DeepSeek Harness（不是关窗口）
+  2. 重新打开宿主
+  3. 点会话标题旁的 dsh-purge → 清洗 → 应用
+  4. 它会自动重启一次
+  5. 再开，模式下拉里就有「红队模式」
+
+  检查注册状态：
+    cat ~/.dsh/redteam/preset-declare.json
+EOT
