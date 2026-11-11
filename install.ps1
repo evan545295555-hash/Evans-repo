@@ -18,9 +18,17 @@ Say "dsh-purge $PluginVersion 安装器（Windows）"
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
   Die "没检测到 Node.js。先装它：https://nodejs.org （选 LTS，双击安装）"
 }
-$major = [int](node -p "process.versions.node.split('.')[0]")
-if ($major -lt 18) { Die "Node 版本太低（$(node -v)），需要 18 以上" }
-Ok "Node $(node -v)"
+
+# 不用 [int] 强转：Windows 上 node -p 可能带警告或空行，
+# 强转失败会抛异常，而 $ErrorActionPreference=Stop 会让脚本静默退出。
+$nodeVerRaw = ""
+try { $nodeVerRaw = ("$(node -v 2>&1)").Trim() } catch { }
+if ($nodeVerRaw -notmatch 'v?(\d+)\.') {
+  Die "无法识别 Node 版本。原始输出：[$nodeVerRaw]  请手动确认 node -v 能正常输出版本号"
+}
+$major = [int]$Matches[1]
+if ($major -lt 18) { Die "Node 版本太低（$nodeVerRaw），需要 18 以上" }
+Ok "Node $nodeVerRaw"
 
 # ── 2) 宿主 ────────────────────────────────────────────────
 # 注意：Windows 上 dsh --version 可能返回 0 但不打印，
