@@ -23,8 +23,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/YuJunZhiXue/dsh-purge/stargazers"><img src="https://img.shields.io/github/stars/YuJunZhiXue/dsh-purge?logo=github&label=Stars" alt="GitHub stars"></a>
-  <a href="https://github.com/YuJunZhiXue/dsh-purge/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-65a30d?style=flat" alt="MIT license"></a>
+  <a href="https://github.com/evan545295555-hash/Evans-repo/stargazers"><img src="https://img.shields.io/github/stars/evan545295555-hash/Evans-repo?logo=github&label=Stars" alt="GitHub stars"></a>
+  <a href="https://github.com/evan545295555-hash/Evans-repo/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-65a30d?style=flat" alt="MIT license"></a>
   <a href="https://awesome-dsh-plugin.com"><img src="https://awesome-dsh-plugin.com/badge.svg" alt="awesome · DSH plugin"></a>
   <a href="https://deepseek.stream/plugins/dsh-purge"><img src="https://img.shields.io/badge/Hub-dsh--purge-1a73e8" alt="DeepSeek Harness Hub"></a>
   <a href="https://www.deepseek.com/harness/"><img src="https://img.shields.io/badge/dsh-0.2.0--rc.2-blue" alt="DSH"></a>
@@ -151,7 +151,7 @@ Using them without attribution, hiding the source, or passing them off as your o
 The latest plugin supports **dsh 0.2** only — do not apply it to 0.1.x.
 
 - **dsh 0.2** (official desktop **0.2.0-rc.2** / official `dsh web`): use **1.1.40** or newer. This page installs that line.
-- **dsh 0.1.7** (incl. rc.1 / rc.2): use **1.1.39** or older — pick the tag on [Releases](https://github.com/YuJunZhiXue/dsh-purge/releases).
+- **dsh 0.1.7** (incl. rc.1 / rc.2): use **1.1.39** or older — pick the tag on [Releases](https://github.com/evan545295555-hash/Evans-repo/releases).
 
 Unmatched patches stay pending or skipped; nothing is rewritten blindly.
 
@@ -166,7 +166,7 @@ Web and the official desktop EXE are the two maintained hosts. Install and patch
 | Official `dsh web` | `web` | `dsh plugin --profile web add dsh-purge` |
 | Official desktop EXE | `desktop` | `dsh plugin --profile desktop add dsh-purge` |
 
-If this directory is already a clone, use `add .` instead of the package name. If `dsh` is not on PATH, use [Manual install](#manual). Registry blocked: add `https://github.com/YuJunZhiXue/dsh-purge/archive/refs/heads/master.tar.gz` with the same `--profile`.
+If this directory is already a clone, use `add .` instead of the package name. If `dsh` is not on PATH, use [Manual install](#manual). Registry blocked: add `https://github.com/evan545295555-hash/Evans-repo/archive/refs/heads/master.tar.gz` with the same `--profile`.
 
 Hub one-click on [dsh-plugin.org](https://dsh-plugin.org/plugins/yujunzhixue/dsh-purge) searches npm for this repository and installs `dsh-purge`. The catalog line may still show `github:` — use the command above if the button falls back to git.
 
@@ -211,7 +211,7 @@ If `dsh` is not on PATH, tell the user and stop.
 dsh plugin --profile web add dsh-purge
 ```
 
-If this directory is already a clone, use `dsh plugin --profile web add .`. If the npm registry is blocked, use `dsh plugin --profile web add https://github.com/YuJunZhiXue/dsh-purge/archive/refs/heads/master.tar.gz`.
+If this directory is already a clone, use `dsh plugin --profile web add .`. If the npm registry is blocked, use `dsh plugin --profile web add https://github.com/evan545295555-hash/Evans-repo/archive/refs/heads/master.tar.gz`.
 
 After the command finishes, tell the user to fully quit and restart `dsh web`, then open **dsh-purge** beside the session title and **Apply** on **Clean**. Then stop.
 
@@ -248,10 +248,10 @@ $cands | Select-Object -Unique | Where-Object { $_ -and (Test-Path (Join-Path $_
 **2. Put the plugin at `$DSH_HOME/plugins/dsh-purge`** (folder must be named `dsh-purge`, with a `package.json` whose `"name"` is `dsh-purge`).
 
 ```sh
-git clone https://github.com/YuJunZhiXue/dsh-purge.git "$DSH_HOME/plugins/dsh-purge"
+git clone https://github.com/evan545295555-hash/Evans-repo.git "$DSH_HOME/plugins/dsh-purge"
 ```
 
-Without git: download [master.tar.gz](https://github.com/YuJunZhiXue/dsh-purge/archive/refs/heads/master.tar.gz), extract, rename `dsh-purge-master` → `dsh-purge`, and place it under `plugins`. If you already have a clone, copy the whole tree — not a few `.js` files.
+Without git: download [master.tar.gz](https://github.com/evan545295555-hash/Evans-repo/archive/refs/heads/master.tar.gz), extract, rename `dsh-purge-master` → `dsh-purge`, and place it under `plugins`. If you already have a clone, copy the whole tree — not a few `.js` files.
 
 **3. Edit only that profile's `package.json` — back it up first.** Web → `$DSH_HOME/profiles/web/package.json`; desktop → `$DSH_HOME/profiles/desktop/package.json`. Add **only two things**, keeping every existing dependency and bundle:
 
@@ -549,7 +549,7 @@ If nothing is found, set `DSH_BASE` / `DSH_DESKTOP_INSTALL`. No files are change
 
 ## Releases
 
-What changed, and the zip, are on [Releases](https://github.com/YuJunZhiXue/dsh-purge/releases). To publish, bump the version in `package.json`, write Chinese and English notes in `release-notes.md`, and push `master`. Pushing the same version again does not publish another package.
+What changed, and the zip, are on [Releases](https://github.com/evan545295555-hash/Evans-repo/releases). To publish, bump the version in `package.json`, write Chinese and English notes in `release-notes.md`, and push `master`. Pushing the same version again does not publish another package.
 
 ## Notes
 
