@@ -56,17 +56,29 @@ jobs:
           $dsh = $candidates[0]
           Write-Host "选用: $dsh"
 
+          # 直接 node 调用 bin.js，绕开 .cmd/.ps1 包装器
+          $root = (npm root -g).Trim()
+          $js = Join-Path $root "@deepseek-ai\dsh\lib\bin.js"
+          if (-not (Test-Path $js)) { throw "找不到 dsh bin.js: $js" }
+          Write-Host "bin.js: $js"
+
           "DSH_CMD=$dsh"     | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "DSH_JS=$js"       | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "DSH_HOME=$(Join-Path $env:USERPROFILE '.dsh')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: 宿主版本
+      - name: 宿主版本（三路对比）
         shell: pwsh
         run: |
-          $out = & $env:DSH_CMD --version 2>&1 | Out-String
-          Write-Host "输出: $out"
-          Write-Host "exit: $LASTEXITCODE"
-          if ($LASTEXITCODE -ne 0) { throw "dsh --version 失败: $LASTEXITCODE" }
-          if (-not $out.Trim()) { throw "dsh --version 无输出（包装器未执行）" }
+          Write-Host "--- 1) dsh.cmd --version ---"
+          $a = & $env:DSH_CMD --version 2>&1 | Out-String
+          Write-Host "  输出=[$($a.Trim())] exit=$LASTEXITCODE"
+
+          Write-Host "--- 2) node bin.js --version ---"
+          $b = & node $env:DSH_JS --version 2>&1 | Out-String
+          Write-Host "  输出=[$($b.Trim())] exit=$LASTEXITCODE"
+
+          if (-not $b.Trim()) { throw "node bin.js 也无输出，dsh 本体异常" }
+          if ($LASTEXITCODE -ne 0) { throw "node bin.js --version 失败: $LASTEXITCODE" }
 
       - name: 打包插件
         shell: pwsh
@@ -78,7 +90,7 @@ jobs:
       - name: 生成 profile
         shell: pwsh
         run: |
-          & $env:DSH_CMD --profile web --dump-config | Out-Null
+          & node $env:DSH_JS --profile web --dump-config | Out-Null
           $code = $LASTEXITCODE
           Write-Host "dump-config exit: $code"
 
@@ -87,7 +99,7 @@ jobs:
             Write-Host "dsh 未创建 profile，手动创建: $dir"
             New-Item -ItemType Directory -Force -Path $dir | Out-Null
             $env:DSH_HOME | Out-Null
-            & $env:DSH_CMD --profile web --dump-config | Out-Null
+            & node $env:DSH_JS --profile web --dump-config | Out-Null
           }
 
           if (-not (Test-Path $dir)) { throw "profile 仍不存在: $dir" }
@@ -111,7 +123,7 @@ jobs:
         run: |
           $tgz = Get-ChildItem -Filter "dsh-purge-*.tgz" | Select-Object -First 1
           Write-Host "installing $($tgz.Name)"
-          & $env:DSH_CMD plugin --profile web add --ignore-scripts $tgz.FullName
+          & node $env:DSH_JS plugin --profile web add --ignore-scripts $tgz.FullName
           Write-Host "install exit: $LASTEXITCODE"
           if ($LASTEXITCODE -ne 0) { throw "dsh plugin add 失败: $LASTEXITCODE" }
 
@@ -135,7 +147,7 @@ jobs:
       - name: 断言挂载条目数
         shell: pwsh
         run: |
-          $cfg = & $env:DSH_CMD --profile web --dump-config 2>&1 | Out-String
+          $cfg = & node $env:DSH_JS --profile web --dump-config 2>&1 | Out-String
           $n = ([regex]::Matches($cfg, '(?m)^- id: dsh-purge$')).Count
           Write-Host "dsh-purge entries: $n"
           if ($n -ne 1) {
