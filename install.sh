@@ -50,6 +50,25 @@ if [ ! -f package.json ]; then
   ok "已创建最小 package.json"
 fi
 
+# ── 4.5) 确保 profile 有默认 bundles ──────────────────────
+# 手动创建的 package.json 不带 bundles，宿主会缺少 base/web-app，
+# 导致插件等不到 agentPresets 服务（phase=waiting-registry）。
+if ! node -e "
+  const p=require('./package.json');
+  const b=p.dsh && p.dsh.profile && p.dsh.profile.bundles;
+  process.exit(Array.isArray(b) && b.length ? 0 : 1);
+" 2>/dev/null; then
+  node -e "
+    const fs=require('fs');
+    const p=JSON.parse(fs.readFileSync('package.json','utf8'));
+    p.dsh = p.dsh || {};
+    p.dsh.profile = p.dsh.profile || {};
+    p.dsh.profile.bundles = ['@deepseek-ai/dsh-base','@deepseek-ai/dsh-web-app'];
+    fs.writeFileSync('package.json', JSON.stringify(p,null,2)+'\n');
+  "
+  ok "已补默认 bundles"
+fi
+
 # ── 5) 下载插件包 ──────────────────────────────────────────
 TMP="${TMPDIR:-/tmp}/dsh-purge-${PLUGIN_VERSION}.tgz"
 say "下载插件 ${PLUGIN_VERSION}"

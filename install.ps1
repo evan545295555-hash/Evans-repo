@@ -52,6 +52,21 @@ if (-not (Test-Path "package.json")) {
   Ok "已创建最小 package.json"
 }
 
+# ── 4.5) 确保 profile 有默认 bundles ──────────────────────
+$hasBundles = $false
+try {
+  $pj = Get-Content "package.json" -Raw | ConvertFrom-Json
+  if ($pj.dsh -and $pj.dsh.profile -and $pj.dsh.profile.bundles -and $pj.dsh.profile.bundles.Count -gt 0) { $hasBundles = $true }
+} catch { }
+if (-not $hasBundles) {
+  $pj = Get-Content "package.json" -Raw | ConvertFrom-Json
+  if (-not $pj.dsh) { $pj | Add-Member -NotePropertyName dsh -NotePropertyValue ([pscustomobject]@{}) -Force }
+  if (-not $pj.dsh.profile) { $pj.dsh | Add-Member -NotePropertyName profile -NotePropertyValue ([pscustomobject]@{}) -Force }
+  $pj.dsh.profile | Add-Member -NotePropertyName bundles -NotePropertyValue @('@deepseek-ai/dsh-base','@deepseek-ai/dsh-web-app') -Force
+  $pj | ConvertTo-Json -Depth 10 | Set-Content package.json -Encoding utf8
+  Ok "已补默认 bundles"
+}
+
 # ── 5) 下载插件包 ──────────────────────────────────────────
 $tmp = Join-Path $env:TEMP "dsh-purge-$PluginVersion.tgz"
 Say "下载插件 $PluginVersion"
