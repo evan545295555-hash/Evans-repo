@@ -130,14 +130,32 @@ jobs:
               Select-Object -First 40 -ExpandProperty FullName | Write-Host
           } else { Write-Host "没有 .dsh 目录" }
 
-      - name: 安装插件
+      - name: 安装插件（npm 直装，绕开 dsh plugin）
         shell: pwsh
         run: |
-          $tgz = Get-ChildItem -Filter "dsh-purge-*.tgz" | Select-Object -First 1
-          Write-Host "installing $($tgz.Name)"
-          & node $env:DSH_JS plugin --profile web add --ignore-scripts $tgz.FullName
-          Write-Host "install exit: $LASTEXITCODE"
-          if ($LASTEXITCODE -ne 0) { throw "dsh plugin add 失败: $LASTEXITCODE" }
+          $profileDir = Join-Path $env:DSH_HOME "profiles\web"
+          Set-Location $profileDir
+
+          if (-not (Test-Path "package.json")) {
+            '{"name":"dsh-profile-web","private":true,"version":"0.0.0","dependencies":{}}' |
+              Set-Content -Encoding utf8 "package.json"
+            Write-Host "已创建最小 package.json（dsh 自身未生成）"
+          }
+
+          $tgz = Get-ChildItem -Path $env:GITHUB_WORKSPACE -Filter "dsh-purge-*.tgz" | Select-Object -First 1
+          if (-not $tgz) { throw "找不到 tgz 包" }
+          Write-Host "installing $($tgz.Name) → $profileDir"
+
+          npm install --no-save --ignore-scripts $tgz.FullName 2>&1 | Select-Object -Last 8
+          Write-Host "npm exit: $LASTEXITCODE"
+          if ($LASTEXITCODE -ne 0) { throw "npm install 失败: $LASTEXITCODE" }
+
+          Write-Host "--- node_modules 顶层（前 10） ---"
+          Get-ChildItem node_modules -ErrorAction SilentlyContinue | Select-Object -First 10 -ExpandProperty Name | Write-Host
+          if (-not (Test-Path "node_modules\dsh-purge\package.json")) {
+            throw "node_modules\dsh-purge 未就位"
+          }
+          Write-Host "dsh-purge 已就位"
 
       - name: 登记到 profile
         shell: pwsh
@@ -159,14 +177,17 @@ jobs:
       - name: 断言挂载条目数
         shell: pwsh
         run: |
+          Write-Host "--- node bin.js --profile web --dump-config ---"
           $cfg = & node $env:DSH_JS --profile web --dump-config 2>&1 | Out-String
+          Write-Host "  exit=$LASTEXITCODE 长度=$($cfg.Length)"
+          if ($cfg.Trim()) {
+            ($cfg -split "`n" | Select-Object -First 30) | Write-Host
+          } else {
+            Write-Host "  (dump-config 无输出)"
+          }
           $n = ([regex]::Matches($cfg, '(?m)^- id: dsh-purge$')).Count
           Write-Host "dsh-purge entries: $n"
-          if ($n -ne 1) {
-            Write-Host "--- dump-config 前 40 行 ---"
-            ($cfg -split "`n" | Select-Object -First 40) | Write-Host
-            throw "预期 1 条，实际 $n 条"
-          }
+          if ($n -ne 1) { throw "预期 1 条，实际 $n 条" }
 
       - name: 关键文件存在性
         shell: pwsh
