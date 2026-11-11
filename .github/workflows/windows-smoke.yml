@@ -146,7 +146,9 @@ jobs:
           if (-not $tgz) { throw "找不到 tgz 包" }
           Write-Host "installing $($tgz.Name) → $profileDir"
 
-          npm install --no-save --ignore-scripts $tgz.FullName 2>&1 | Select-Object -Last 8
+          # 不能用 --no-save：那样不会写进 package.json 的 dependencies，
+          # 而 dsh 加载插件正是读这一项
+          npm install --save --ignore-scripts $tgz.FullName 2>&1 | Select-Object -Last 8
           Write-Host "npm exit: $LASTEXITCODE"
           if ($LASTEXITCODE -ne 0) { throw "npm install 失败: $LASTEXITCODE" }
 
