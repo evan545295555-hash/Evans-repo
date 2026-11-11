@@ -71,6 +71,11 @@ if ($LASTEXITCODE -ne 0) { Die "npm install 失败：$LASTEXITCODE" }
 if (-not (Test-Path "node_modules\dsh-purge\package.json")) {
   Die "包未就位：node_modules\dsh-purge 不存在"
 }
+
+# npm 会把临时文件路径写进 dependencies，%TEMP% 清理后即失效。
+# 换成稳定的 release URL。
+npm pkg set "dependencies.dsh-purge=$PkgUrl" 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) { Warn "无法重写 dependencies，保留原值" }
 Ok "插件已写入 node_modules"
 
 # ── 7) 登记到 bundles ─────────────────────────────────────
