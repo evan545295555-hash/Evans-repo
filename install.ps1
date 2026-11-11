@@ -31,17 +31,28 @@ if ($major -lt 18) { Die "Node 版本太低（$nodeVerRaw），需要 18 以上"
 Ok "Node $nodeVerRaw"
 
 # ── 2) 宿主 ────────────────────────────────────────────────
-# 注意：Windows 上 dsh --version 可能返回 0 但不打印，
-# 所以这里不把版本号当作硬条件，只保证 npm 全局包装上。
+# 用 npm ls 读全局版本，不依赖 dsh --version。
+# Windows 上 dsh --version 常无输出，会导致误判"版本不对"而重装 830MB。
 $needHost = $true
-if (Get-Command dsh -ErrorAction SilentlyContinue) {
-  $cur = (dsh --version 2>$null | Out-String).Trim()
-  if ($cur -eq $HostVersion) { $needHost = $false; Ok "宿主 $cur" }
-  elseif ($cur) { Warn "宿主版本 $cur，切换到 $HostVersion" }
-  else { Warn "dsh 无输出（Windows 已知问题），仍继续" }
+$installedHost = ""
+try {
+  $lsOut = (npm ls -g @deepseek-ai/dsh --depth=0 2>&1 | Out-String)
+  if ($lsOut -match '@deepseek-ai/dsh@([\w.\-]+)') { $installedHost = $Matches[1] }
+} catch { }
+
+if ($installedHost) {
+  Ok "已装宿主 $installedHost"
+  if ($installedHost -ne $HostVersion) {
+    Warn "宿主是 $installedHost，脚本按 $HostVersion 验证；继续用现有版本"
+  }
+  $needHost = $false
+} elseif (Get-Command dsh -ErrorAction SilentlyContinue) {
+  Ok "dsh 命令存在（版本号读不到，按已安装处理）"
+  $needHost = $false
 }
+
 if ($needHost) {
-  Say "安装 DeepSeek Harness $HostVersion（依赖较多，请耐心等）"
+  Say "未检测到宿主，安装 DeepSeek Harness $HostVersion（约 830 MB，耐心等）"
   npm i -g "@deepseek-ai/dsh@$HostVersion"
   if ($LASTEXITCODE -ne 0) { Die "宿主安装失败：$LASTEXITCODE" }
   Ok "宿主已安装"
