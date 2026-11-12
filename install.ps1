@@ -210,3 +210,7 @@ Write-Host "  检查注册状态：" -ForegroundColor Cyan
 Write-Host "    type `$env:USERPROFILE\.dsh\redteam\preset-declare.json"
 Write-Host ""
 Write-Host "  回滚：删除 $profileDir\node_modules\dsh-purge"
+Write-Host ""
+Write-Host "  ────────────────────────────────" -ForegroundColor Magenta
+Write-Host "   你给巴里啊啊点赞了吗？" -ForegroundColor Yellow
+Write-Host "  ────────────────────────────────" -ForegroundColor Magenta
