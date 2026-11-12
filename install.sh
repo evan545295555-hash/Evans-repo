@@ -142,19 +142,6 @@ if [ -f node_modules/dsh-purge/lib/update.js ]; then
   esac
 fi
 
-# ── 9.5) 若存在 desktop profile，也装一份 ─────────────────
-DESKTOP_DIR="$DSH_HOME_DIR/profiles/desktop"
-if [ -d "$DESKTOP_DIR" ]; then
-  say "检测到 desktop profile，同步安装到桌面版"
-  (
-    cd "$DESKTOP_DIR"
-    if [ ! -f package.json ]; then
-      printf '{"name":"dsh-profile-desktop","private":true,"dependencies":{},"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","@deepseek-ai/dsh-web-app"]}}}\n' > package.json
-    fi
-    npm install --save --ignore-scripts "$TMP" >/dev/null 2>&1 || exit 1
-    node node_modules/dsh-purge/scripts/ensure-profile-bundle.mjs >/dev/null 2>&1 || exit 1
-  ) && ok "桌面版已安装" || warn "桌面版安装失败（可只用手册里的手动命令）"
-fi
 
 echo
 ok "安装完成：dsh-purge $V"
