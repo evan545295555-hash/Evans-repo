@@ -27,7 +27,7 @@
 # The preset's own persona, shadowing the deployment default for this agent.
 # `{{model}}` and `{{cwd}}` resolve from the agent's own route and workspace.
 - id: persona
-  name: '@deepseek-ai/dsh-persona'
+  name: 'dsh-purge/redteam/persona'
   config:
     # 新版 dsh-persona 用 prefix/suffix 取代了旧的 text 字段（text 会因缺 prefix 挂载失败）
     prefix: |

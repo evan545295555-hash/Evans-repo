@@ -13,7 +13,8 @@
     "./redteam/store": "./lib/redteam/store.js",
     "./redteam/ui": "./lib/redteam/ui.js",
     "./redteam/tools": "./lib/redteam/tools.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./redteam/persona": "./lib/redteam/persona.js"
   },
   "bin": {
     "dsh-purge": "bin/dsh-purge.js"

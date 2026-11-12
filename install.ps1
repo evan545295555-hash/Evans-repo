@@ -184,6 +184,27 @@ if (Test-Path $upd) {
   }
 }
 
+# ── 9.5) 若存在 desktop profile，也装一份 ─────────────────
+$desktopDir = Join-Path $DshHomeDir "profiles\desktop"
+if (Test-Path $desktopDir) {
+  Say "检测到 desktop profile，同步安装到桌面版"
+  $okDesktop = $false
+  Push-Location $desktopDir
+  try {
+    if (-not (Test-Path "package.json")) {
+      '{"name":"dsh-profile-desktop","private":true,"dependencies":{},"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","@deepseek-ai/dsh-web-app"]}}}' |
+        Set-Content -Path "package.json" -Encoding utf8
+    }
+    npm install --save --ignore-scripts $tmp 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+      node "node_modules\dsh-purge\scripts\ensure-profile-bundle.mjs" 2>&1 | Out-Null
+      if ($LASTEXITCODE -eq 0 -and (Test-Path "node_modules\dsh-purge\package.json")) { $okDesktop = $true }
+    }
+  } catch { }
+  Pop-Location
+  if ($okDesktop) { Ok "桌面版已安装" } else { Warn "桌面版安装失败，可只使用网页版" }
+}
+
 Write-Host ""
 Ok "安装完成：dsh-purge $v"
 
