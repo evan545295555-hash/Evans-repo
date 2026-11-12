@@ -38,13 +38,20 @@ fi
 
 # ── 2) 宿主 ────────────────────────────────────────────────
 need_host=1
-if command -v dsh >/dev/null 2>&1; then
+INSTALLED="$(npm ls -g @deepseek-ai/dsh --depth=0 2>/dev/null | grep -oE '@deepseek-ai/dsh@[0-9][^ ]*' | head -1 | sed 's/.*@//' || true)"
+if [ -n "$INSTALLED" ]; then
+  # 实测 0.2.0-rc.2 与 0.2.1-rc.2 都能完整应用，任意 0.2.x 保留
+  need_host=0
+  ok "宿主 $INSTALLED（兼容）"
+  case "$INSTALLED" in
+    0.2.*) ;;
+    *) warn "宿主是 $INSTALLED，本插件面向 0.2.x；如遇异常再升级" ;;
+  esac
+elif command -v dsh >/dev/null 2>&1; then
   cur="$(dsh --version 2>/dev/null | tr -d '[:space:]' || true)"
-  if [ "$cur" = "$HOST_VERSION" ]; then
+  if [ -n "$cur" ]; then
     need_host=0
     ok "宿主 $cur"
-  elif [ -n "$cur" ]; then
-    warn "宿主版本 $cur，对齐到 $HOST_VERSION（补丁只支持到 0.2.0）"
   fi
 fi
 if [ "$need_host" -eq 1 ]; then

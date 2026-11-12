@@ -58,19 +58,14 @@ try {
   if ($lsOut -match '@deepseek-ai/dsh@([\w.\-]+)') { $installedHost = $Matches[1] }
 } catch { }
 
-if ($installedHost) {
-  if ($installedHost -eq $HostVersion) {
-    Ok "已装宿主 $installedHost"
+  if ($installedHost) {
+    # 实测 0.2.0-rc.2 与 0.2.1-rc.2 都能完整应用（applied 67 / 56，failed 0）
+    # 任意 0.2.x 保留，不强制降级，避免白下 830MB
+    Ok "已装宿主 $installedHost（兼容）"
+    if ($installedHost -notlike "0.2.*") {
+      Warn "宿主是 $installedHost，本插件面向 0.2.x；如遇异常再升级"
+    }
     $needHost = $false
-  } else {
-    # 补丁只支持到 0.2.0；版本不对必须对齐，否则「应用」会取物失败
-    Warn "宿主是 $installedHost，需要 $HostVersion（补丁只支持到 0.2.0）"
-    Say "对齐宿主版本到 $HostVersion"
-    npm i -g "@deepseek-ai/dsh@$HostVersion" --force
-    if ($LASTEXITCODE -ne 0) { Die "宿主对齐失败：$LASTEXITCODE" }
-    Ok "宿主已对齐到 $HostVersion"
-    $needHost = $false
-  }
 } elseif (Get-Command dsh -ErrorAction SilentlyContinue) {
   Ok "dsh 命令存在（版本号读不到，按已安装处理）"
   $needHost = $false
