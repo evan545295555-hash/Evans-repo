@@ -32,20 +32,15 @@ if ($major -lt 20) {
 }
 Ok "Node $nodeVerRaw"
 
-# ── 1.5) npm 安装策略必须是 hoisted ────────────────────────
-# 插件按「依赖摊平」检测宿主（找 @deepseek-ai/dsh-system-prompt）。
-# npm 若用 nested 布局，依赖埋在 dsh/node_modules 里，检测永远失败，
-# 表现为「应用」报：清洗没有写进全部宿主。
+# ── 1.5) npm 策略（仅提示）─────────────────────────────────
+# install-strategy=hoisted 只对本地项目生效，全局安装永远嵌套。
+# 这里不再强制修改，避免让用户误以为改了就有用。
 $strategy = ""
 try { $strategy = ("$(npm config get install-strategy 2>$null)").Trim() } catch { }
-if ($strategy -ne "hoisted") {
-  Warn "npm 安装策略是 '$strategy'，改为 hoisted（插件要求摊平布局）"
-  npm config set install-strategy hoisted 2>&1 | Out-Null
-  $strategy = ("$(npm config get install-strategy 2>$null)").Trim()
-  if ($strategy -ne "hoisted") { Die "无法设置 install-strategy=hoisted" }
-  Ok "已设为 hoisted"
-} else {
+if ($strategy -eq "hoisted") {
   Ok "npm 策略 hoisted"
+} else {
+  Write-Host "  提示: npm install-strategy=$strategy（对全局安装无影响，可忽略）" -ForegroundColor DarkGray
 }
 
 # ── 2) 宿主 ────────────────────────────────────────────────
@@ -78,19 +73,23 @@ if ($needHost) {
   Ok "宿主已安装"
 }
 
-# ── 2.5) 布局验证：dsh-system-prompt 必须在顶层 ──────────
+# ── 2.5) 布局检查（仅提示，不阻断）─────────────────────────
+# npm 全局安装默认把依赖嵌套在 <pkg>/node_modules/ 下，这是设计行为；
+# install-strategy=hoisted 只对本地项目生效，全局安装不遵守。
+# 插件本身已兼容两种布局（hostCleanMarkersPresent 有四个候选路径），
+# 所以这里只提示，不重装、不退出。
 $npmRoot = (npm root -g).Trim()
-$spPath = Join-Path $npmRoot "@deepseek-ai\dsh-system-prompt\lib\index.js"
-if (-not (Test-Path $spPath)) {
-  Warn "宿主是嵌套布局，插件检测不到。用 hoisted 重装…"
-  npm i -g "@deepseek-ai/dsh@$HostVersion" --force
-  if ($LASTEXITCODE -ne 0) { Die "重装宿主失败：$LASTEXITCODE" }
-  if (-not (Test-Path $spPath)) {
-    Die ("重装后仍是嵌套布局：$spPath 不存在。`n    请手动执行：`n      npm config set install-strategy hoisted`n      npm i -g @deepseek-ai/dsh@$HostVersion --force")
-  }
-  Ok "已重装为摊平布局"
+$flatPath = Join-Path $npmRoot "@deepseek-ai\dsh-system-prompt\lib\index.js"
+$nestedPath = Join-Path $npmRoot "@deepseek-ai\dsh\node_modules\@deepseek-ai\dsh-system-prompt\lib\index.js"
+if (Test-Path $flatPath) {
+  Ok "布局：摊平（hoisted）"
+} elseif (Test-Path $nestedPath) {
+  Ok "布局：嵌套（npm 全局默认，插件已兼容）"
+} else {
+  Warn "未找到 dsh-system-prompt，插件可能检测不到宿主"
+  Write-Host "    摊平: $flatPath" -ForegroundColor DarkGray
+  Write-Host "    嵌套: $nestedPath" -ForegroundColor DarkGray
 }
-Ok "布局检查通过（dsh-system-prompt 在顶层）"
 
 # ── 3) profile 目录 ────────────────────────────────────────
 $profileDir = Join-Path $DshHomeDir "profiles\web"
