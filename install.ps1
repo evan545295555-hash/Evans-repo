@@ -96,19 +96,27 @@ if (Test-Path $flatPath) {
 # 不编译会导致 dsh web 启动失败：Cannot find module ...\pty.node
 $hostVerForRebuild = if ($installedHost) { $installedHost } else { $HostVersion }
 function Test-NativeOk {
+  # 原生模块文件名因平台而异：
+  #   Linux / macOS : pty.node
+  #   Windows       : conpty.node
   $dirs = @(
     (Join-Path $npmRoot "@deepseek-ai\dsh\node_modules\node-pty"),
     (Join-Path $npmRoot "@deepseek-ai\node-pty"),
     (Join-Path $npmRoot "node-pty")
   )
+  $names = @("pty.node", "conpty.node")
   foreach ($d in $dirs) {
-    # node-pty 1.x：build\Release\pty.node
-    if (Test-Path (Join-Path $d "build\Release\pty.node")) { return $true }
-    # node-pty 1.2+：prebuilds\<platform>-<arch>\pty.node
+    # 老结构：build\Release\
+    foreach ($n in $names) {
+      if (Test-Path (Join-Path $d "build\Release\$n")) { return $true }
+    }
+    # node-pty 1.2+：prebuilds\<platform>-<arch>\
     $pre = Join-Path $d "prebuilds"
     if (Test-Path $pre) {
-      $hit = Get-ChildItem -Path $pre -Filter "pty.node" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-      if ($hit) { return $true }
+      foreach ($n in $names) {
+        $hit = Get-ChildItem -Path $pre -Filter $n -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($hit) { return $true }
+      }
     }
   }
   return $false

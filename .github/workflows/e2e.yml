@@ -74,7 +74,7 @@ jobs:
   e2e-windows:
     name: L2+L3 Windows / Node ${{ matrix.node }}
     runs-on: windows-latest
-    timeout-minutes: 50
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -94,13 +94,20 @@ jobs:
           Write-Host "npm : $(npm -v)"
           Write-Host "cwd : $(Get-Location)"
 
-      - name: 装宿主 0.2.1-rc.2（含原生模块构建）
+      - name: 装宿主 0.2.1-rc.2（第一步，不跑脚本）
         shell: pwsh
-        timeout-minutes: 20
+        timeout-minutes: 25
         run: |
-          npm i -g @deepseek-ai/dsh@0.2.1-rc.2
+          npm i -g @deepseek-ai/dsh@0.2.1-rc.2 --ignore-scripts
           if ($LASTEXITCODE -ne 0) { throw "宿主安装失败: $LASTEXITCODE" }
+          Write-Host "宿主已装（跳过脚本）"
+
+      - name: 补跑原生模块构建（Windows 编译较慢，给 40 分钟）
+        shell: pwsh
+        timeout-minutes: 40
+        run: |
           Write-Host "=== 补跑原生模块构建 ==="
+          Write-Host "Windows 上 node-pty 若无 win32 prebuild 会走 node-gyp rebuild，可能 5-15 分钟"
           npm i -g @deepseek-ai/dsh@0.2.1-rc.2 `
             --allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,node-pty,@google/genai,protobufjs
           if ($LASTEXITCODE -ne 0) { throw "构建脚本失败: $LASTEXITCODE" }
@@ -124,17 +131,26 @@ jobs:
             (Join-Path $root "@deepseek-ai\node-pty"),
             (Join-Path $root "node-pty")
           )
+          # 平台差异：Linux/macOS = pty.node，Windows = conpty.node
+          $names = @("pty.node", "conpty.node")
           $found = $null
           foreach ($d in $dirs) {
-            if (Test-Path (Join-Path $d "build\Release\pty.node")) { $found = Join-Path $d "build\Release\pty.node"; break }
+            foreach ($n in $names) {
+              $p1 = Join-Path $d "build\Release\$n"
+              if (Test-Path $p1) { $found = $p1; break }
+            }
+            if ($found) { break }
             $pre = Join-Path $d "prebuilds"
             if (Test-Path $pre) {
-              $hit = Get-ChildItem $pre -Filter "pty.node" -Recurse -EA SilentlyContinue | Select-Object -First 1
-              if ($hit) { $found = $hit.FullName; break }
+              foreach ($n in $names) {
+                $hit = Get-ChildItem $pre -Filter $n -Recurse -EA SilentlyContinue | Select-Object -First 1
+                if ($hit) { $found = $hit.FullName; break }
+              }
             }
+            if ($found) { break }
           }
-          if (-not $found) { throw "node-pty 未编译，dsh web 会起不来" }
-          Write-Host "pty.node: $found"
+          if (-not $found) { throw "node-pty 未编译（pty.node 与 conpty.node 都不存在），dsh web 会起不来" }
+          Write-Host "原生模块: $found"
 
       - name: 端到端跑 install.ps1（模拟全新用户）
         shell: pwsh

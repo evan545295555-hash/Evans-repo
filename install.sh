@@ -81,17 +81,21 @@ fi
 # 不编译会导致 dsh web 启动失败：Cannot find module .../pty.node
 HOST_VER_FOR_REBUILD="${INSTALLED:-$HOST_VERSION}"
 native_ok() {
+  # 原生模块文件名因平台而异：
+  #   Linux / macOS : pty.node
+  #   Windows       : conpty.node 和 conpty_console_list.node
   local dirs=(
     "$NPM_ROOT/@deepseek-ai/dsh/node_modules/node-pty"
     "$NPM_ROOT/@deepseek-ai/node-pty"
     "$NPM_ROOT/node-pty"
   )
   for d in "${dirs[@]}"; do
-    # node-pty 1.x：build/Release/pty.node
+    # 老结构：build/Release/
     [ -f "$d/build/Release/pty.node" ] && return 0
-    # node-pty 1.2+：prebuilds/<platform>-<arch>/pty.node
+    [ -f "$d/build/Release/conpty.node" ] && return 0
+    # node-pty 1.2+：prebuilds/<platform>-<arch>/
     if [ -d "$d/prebuilds" ]; then
-      for f in "$d"/prebuilds/*/pty.node; do
+      for f in "$d"/prebuilds/*/pty.node "$d"/prebuilds/*/conpty.node; do
         [ -f "$f" ] && return 0
       done
     fi

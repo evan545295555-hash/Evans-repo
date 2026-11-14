@@ -104,6 +104,7 @@ const sh = read("install.sh");
 if (sh) {
   sh.includes("native_ok") ? ok("install.sh 有 native_ok") : fail("install.sh 缺 native_ok");
   sh.includes("prebuilds") ? ok("install.sh 兼容 prebuilds 布局") : fail("install.sh 缺 prebuilds 检测");
+  sh.includes("conpty") ? ok("install.sh 兼容 Windows conpty.node") : fail("install.sh 缺 conpty 检测（Windows 上会误判未编译）");
   sh.includes("allow-scripts") ? ok("install.sh 有 allow-scripts") : fail("install.sh 缺 allow-scripts");
   const m = sh.match(/HOST_VERSION="([^"]+)"/);
   m ? ok(`install.sh HOST_VERSION=${m[1]}`) : fail("install.sh 缺 HOST_VERSION");
@@ -112,6 +113,7 @@ const ps = read("install.ps1");
 if (ps) {
   ps.includes("Test-NativeOk") ? ok("install.ps1 有 Test-NativeOk") : fail("install.ps1 缺 Test-NativeOk");
   ps.includes("prebuilds") ? ok("install.ps1 兼容 prebuilds 布局") : fail("install.ps1 缺 prebuilds 检测");
+  ps.includes("conpty") ? ok("install.ps1 兼容 Windows conpty.node") : fail("install.ps1 缺 conpty 检测（Windows 上会误判未编译）");
   ps.includes("allow-scripts") ? ok("install.ps1 有 allow-scripts") : fail("install.ps1 缺 allow-scripts");
   const m = ps.match(/\$HostVersion\s*=\s*"([^"]+)"/);
   m ? ok(`install.ps1 HostVersion=${m[1]}`) : fail("install.ps1 缺 HostVersion");
