@@ -1,4 +1,4 @@
-param([switch]$Kill)
+﻿param([switch]$Kill)
 $dshProcs = @()
 $otherProcs = @()
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue | ForEach-Object {

@@ -1,4 +1,4 @@
-# dsh-purge 进程识别（Windows 原生入口）
+﻿# dsh-purge 进程识别（Windows 原生入口）
 #
 # 用法:
 #   powershell -NoProfile -File scripts/detect-dsh-procs.ps1

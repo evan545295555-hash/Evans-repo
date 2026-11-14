@@ -33,7 +33,8 @@ emit_procs() {
     fi
 
     local SELF OUT RC
-    for SELF in powershell pwsh powershell.exe; do
+    # 优先 pwsh（PowerShell 7，默认 UTF-8）；powershell 5.1 对无 BOM 文件按 ANSI 读
+    for SELF in pwsh powershell powershell.exe; do
       if command -v "$SELF" >/dev/null 2>&1; then
         # 不要 2>/dev/null：PowerShell 的错误要能看见，否则排查时一片空白
         OUT="$("$SELF" -NoProfile -ExecutionPolicy Bypass -File "$WPS1" 2>&1)"
