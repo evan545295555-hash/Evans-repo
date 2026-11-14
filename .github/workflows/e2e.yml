@@ -244,10 +244,22 @@ jobs:
           set -e
           if [ "$RC2" != "0" ]; then
             echo "  FAIL 正常结构失败（退出码 $RC2）"
-            echo "       [diag] 正常结构路径的 clean-all.sh 输出:"
-            head -40 /tmp/ok.log 2>&1 | sed 's/^/         /' || true
-            echo "       [diag] T2 目录内容:"
-            ls -R "$T2" 2>&1 | head -10 | sed 's/^/         /' || true
+            echo "       [d2] ok.log 存在: $([ -f /tmp/ok.log ] && echo yes || echo no)  大小: $(wc -c </tmp/ok.log 2>/dev/null || echo '?') 字节"
+            echo "       [d2] ok.log 原文（最多 30 行，不做 sed）:"
+            cat /tmp/ok.log 2>&1 | head -30 || true
+            echo "       [d2] --- ok.log end ---"
+            echo "       [d2] T2 存在: $([ -d "$T2" ] && echo yes || echo no)"
+            echo "       [d2] T2 列表:"
+            ls -la "$T2" 2>&1 | head -12 || true
+            echo "       [d2] T2/profiles/web 列表:"
+            ls -la "$T2/profiles/web" 2>&1 | head -12 || true
+            echo "       [d2] FAKE_REPO 列表:"
+            ls -la "$FAKE_REPO/scripts" 2>&1 | head -8 || true
+            echo "       [d2] 直接重跑一次看 stderr:"
+            set +e
+            HOME="$FH" DSH_HOME="$T2" bash -x "$FAKE_REPO/scripts/clean-all.sh" --yes 2>&1 | head -40
+            set -e
+            echo "       [d2] --- rerun end ---"
             F=$((F+1))
           else
             echo "  OK  正常结构完成清理"; P=$((P+1))
