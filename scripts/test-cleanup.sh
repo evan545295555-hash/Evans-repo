@@ -208,6 +208,7 @@ else
 fi
 
 # ══════════════════════════════════════════════════════
+set +e   # T5 大量用 grep 断言，避免 -e 打断
 head_ "T5 进程筛选：真 DSH 停，无关 node 留"
 # ══════════════════════════════════════════════════════
 PT="$TMP/t5"
@@ -232,18 +233,23 @@ echo "    [diag] list-dsh-procs.sh 退出码: $LIST_RC"
 echo "    [diag] 输出行数: $(echo "$OUT" | wc -l)"
 
 # 反查：按测试目录路径找
+# 注意：shell: bash 带 -e -o pipefail，grep 找不到会让整个管道返回 1，
+# $(...) 失败会让脚本直接退出。所以这里必须自己吞掉退出码。
 find_pid() {
-  echo "$OUT" | grep -F "$1" | head -1 | sed -n 's/.*PID=\([0-9][0-9]*\).*/\1/p'
+  local hit
+  hit="$(printf '%s\n' "$OUT" | grep -F "$1" 2>/dev/null | head -1)" || true
+  [ -z "$hit" ] && { printf ''; return 0; }
+  printf '%s\n' "$hit" | sed -n 's/.*PID=\([0-9][0-9]*\).*/\1/p' || true
+  return 0
 }
-A=$(find_pid "deepseek-tools/unrelated.js")
-B=$(find_pid "@deepseek-ai/dsh/lib/bin.js")
-# 普通 node 没有可识别路径，用行数差值判断
+A="$(find_pid 'deepseek-tools/unrelated.js')" || true
+B="$(find_pid '@deepseek-ai/dsh/lib/bin.js')" || true
 C=""
 
 echo "    [diag] 反查到 A(无关)=${A:-未找到}  B(DSH)=${B:-未找到}"
 if [ -z "$A" ] || [ -z "$B" ]; then
-  echo "    [diag] 输出前 8 行:"
-  echo "$OUT" | head -8 | sed 's/^/      /' | cut -c1-130
+  echo "    [diag] list-dsh-procs.sh 完整输出（前 10 行）:"
+  printf '%s\n' "$OUT" | head -10 | sed 's/^/      /' | cut -c1-140 || true
 fi
 
 # 收尾只用反查到的 PID。
