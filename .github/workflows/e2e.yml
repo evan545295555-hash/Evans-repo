@@ -69,6 +69,148 @@ jobs:
         run: node scripts/check-scripts.mjs
 
   # ══════════════════════════════════════════════════════════════
+  # 文档入口测试：用户照抄的命令真的能用吗
+  # ══════════════════════════════════════════════════════════════
+  doc-entry:
+    name: 文档入口与校验
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 从文档提取 URL 并验证可下载
+        shell: bash
+        run: |
+          set -uo pipefail
+          echo "=== 从两份文档提取所有 raw.githubusercontent URL ==="
+          URLS=$(grep -ohE 'https://raw\.githubusercontent\.com/evan545295555-hash/Evans-repo/[0-9a-f]{40}/[a-z-]+\.(sh|ps1)' docs/*.md | sort -u || true)
+          if [ -z "$URLS" ]; then
+            echo "::error::文档里没有找到固定 SHA 的下载 URL"
+            exit 1
+          fi
+          echo "$URLS" | sed 's/^/  /'
+
+          FAIL=0
+          echo ""
+          echo "=== 逐个下载验证 ==="
+          while IFS= read -r u; do
+            [ -z "$u" ] && continue
+            f="$(mktemp)"
+            if curl -fsSL --retry 3 --max-time 60 -o "$f" "$u"; then
+              SZ=$(wc -c <"$f" | tr -d ' ')
+              echo "  OK  $SZ 字节  $(basename "$u")"
+              if [ "$SZ" -lt 3000 ]; then
+                echo "::error::文件异常小: $u ($SZ 字节)"
+                FAIL=1
+              fi
+            else
+              echo "::error::下载失败: $u"
+              FAIL=1
+            fi
+            rm -f "$f"
+          done <<< "$URLS"
+
+          # 验证固定 SHA 的 install.sh 内容正确
+          echo ""
+          echo "=== 验证 install.sh 关键修复都在 ==="
+          SHA=$(echo "$URLS" | grep 'install\.sh' | head -1 | grep -oE '[0-9a-f]{40}' || true)
+          if [ -z "$SHA" ]; then
+            echo "::error::文档里没有 install.sh 的固定 SHA URL"
+            exit 1
+          fi
+          f="$(mktemp)"
+          curl -fsSL --retry 3 -o "$f" "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/$SHA/install.sh"
+          for kw in "检测到已装" "已补齐缺失的 base" "conpty" "allow-scripts" "set -euo pipefail"; do
+            if grep -q "$kw" "$f"; then
+              echo "  OK  含「$kw」"
+            else
+              echo "::error::install.sh 缺「$kw」"
+              FAIL=1
+            fi
+          done
+          # 不应含无条件 --force 重装
+          if grep -qE 'dsh@\$\{?[A-Za-z_.]+\}?".{0,40}--force' "$f"; then
+            echo "::error::install.sh 含 --force 重装宿主"
+            FAIL=1
+          else
+            echo "  OK  无 --force 重装"
+          fi
+          rm -f "$f"
+
+          exit $FAIL
+
+      - name: 负例 1：404 URL 必须被拒
+        shell: bash
+        run: |
+          set -uo pipefail
+          BAD="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/0000000000000000000000000000000000000000/install.sh"
+          echo "=== 旧写法（管道）应当静默成功，证明问题存在 ==="
+          OUT=$({ curl -fsSL --max-time 20 "$BAD" 2>/dev/null || true; } | bash 2>/dev/null; echo $?)
+          echo "  pipe 写法退出码: $OUT"
+          if [ "$OUT" = "0" ]; then
+            echo "  ✓ 确认旧写法会静默成功（这就是要修的原因）"
+          fi
+
+          echo ""
+          echo "=== 新写法必须拒绝 ==="
+          f="$(mktemp)"
+          if curl -fsSL --max-time 20 -o "$f" "$BAD" 2>/dev/null; then
+            echo "::error::404 URL 居然下载成功"
+            exit 1
+          fi
+          echo "  ✓ curl 非 0，不会执行"
+          rm -f "$f"
+
+      - name: 负例 2：文档里的验收命令必须拒绝旧状态
+        shell: bash
+        run: |
+          set -uo pipefail
+          # 从文档提取第 2 步的验收命令（用 node + at 检查的那段）
+          cat > /tmp/nc.sh <<'SCRIPT'
+          f="$1"
+          [ -f "$f" ] || { echo "  ❌ 文件不存在"; exit 1; }
+          node -e '
+          const d = require(process.argv[1]);
+          const age = Math.floor((Date.now() - Date.parse(d.at)) / 1000);
+          if (age > 600) { console.log("  ❌ 文件太旧"); process.exit(1); }
+          if (d.phase !== "registered") { console.log("  ❌ phase 不对"); process.exit(1); }
+          if (d.broken) { console.log("  ❌ broken 不为空"); process.exit(1); }
+          console.log("  ✅ 通过");
+          ' "$f"
+          SCRIPT
+
+          mkdir -p /tmp/nc2
+          YESTERDAY=$(node -p "new Date(Date.now()-86400000).toISOString()")
+          NOW=$(node -p "new Date().toISOString()")
+
+          echo "=== 用例 A：昨天生成的文件，应拒绝 ==="
+          echo "{\"ok\":true,\"phase\":\"registered\",\"plugins\":19,\"broken\":null,\"at\":\"$YESTERDAY\"}" > /tmp/nc2/a.json
+          if bash /tmp/nc.sh /tmp/nc2/a.json; then
+            echo "::error::旧文件被误判为成功"
+            exit 1
+          fi
+          echo "  ✓ 正确拒绝"
+
+          echo ""
+          echo "=== 用例 B：刚生成的文件，应通过 ==="
+          echo "{\"ok\":true,\"phase\":\"registered\",\"plugins\":19,\"broken\":null,\"at\":\"$NOW\"}" > /tmp/nc2/b.json
+          if bash /tmp/nc.sh /tmp/nc2/b.json; then
+            echo "  ✓ 正确通过"
+          else
+            echo "::error::正常文件被错拒"
+            exit 1
+          fi
+
+          echo ""
+          echo "=== 用例 C：刚生成但 broken，应拒绝 ==="
+          echo "{\"ok\":false,\"phase\":\"registered-broken\",\"plugins\":18,\"broken\":\"x\",\"at\":\"$NOW\"}" > /tmp/nc2/c.json
+          if bash /tmp/nc.sh /tmp/nc2/c.json; then
+            echo "::error::broken 被误判为成功"
+            exit 1
+          fi
+          echo "  ✓ 正确拒绝"
+
+  # ══════════════════════════════════════════════════════════════
   # L2 失败场景自愈：已装/装坏了能不能修回来
   # ══════════════════════════════════════════════════════════════
   recovery:

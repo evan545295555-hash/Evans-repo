@@ -30,11 +30,14 @@ Win 键 → 输入 powershell → 右键「Windows PowerShell」→「以管理�
 npm root -g          ← 看这个目录在不在需要提权的位置
 ```
 
-| `npm root -g` 输出 | 是否需要管理员 |
+| `npm root -g` 常见输出 | 通常是否需要管理员 |
 |---|---|
 | `C:\Program Files\nodejs\node_modules` | 需要（Program Files 受保护） |
-| `C:\Users\你\AppData\Roaming\npm\node_modules` | 不需要 |
-| 其他盘（`D:\...`） | 看目录权限，可先试普通权限 |
+| `C:\Users\<你>\AppData\Roaming\npm\node_modules` | 一般不需要 |
+| `C:\Users\<你>\AppData\Local\...\node_modules` | 一般不需要 |
+| 其他盘（`D:\...`、`E:\...`） | 看目录 ACL，可先试普通权限 |
+
+**以上是常见例子，不是规则。** 真正判断依据：**实际安装目标是否可写**。不确定就用管理员，不会有副作用。
 
 **不确定就用管理员**，不会有副作用。
 
@@ -128,21 +131,43 @@ if (-not (Select-String -Path $f -Pattern "dsh-purge" -SimpleMatch -Quiet)) { th
 
 ```bash
 u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.sh"
-f="/tmp/dsh-install.sh"
+f="$(mktemp /tmp/dsh-install-XXXXXX.sh)"
+trap 'rm -f "$f"' EXIT
 curl -fsSL --retry 3 --retry-delay 2 -o "$f" "$u" || { echo "下载失败"; exit 1; }
 [ -s "$f" ] || { echo "文件为空"; exit 1; }
-[ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
+[ "$(wc -c <"$f")" -ge 5000 ] || { echo "文件长度异常，可能不完整"; exit 1; }
 head -1 "$f" | grep -q '^#!' || { echo "不是有效脚本"; exit 1; }
-grep -q dsh-purge "$f" || { echo "内容不对"; exit 1; }
+grep -q 'PLUGIN_VERSION' "$f" || { echo "内容不对"; exit 1; }
+bash -n "$f" || { echo "脚本语法错误，可能下载不完整"; exit 1; }
 bash "$f"
 ```
 
 ### 为什么要分三步
 
-| 写法 | 下载 404 时 | 下载中断时 |
+| 写法 | 下载 404 时 | 下载中途断开时 |
 |---|---|---|
 | `curl \| bash` | **静默退出 0**，你以为装上了 | 可能执行不完整脚本 |
-| 先下载后执行 | 明确报「下载失败」 | 校验字节数拦下来 |
+| 先下载后执行 | 明确报「下载失败」 | curl 退出非 0，`.sh` 不执行 |
+
+**四层防线，从强到弱**：
+
+| 层 | 检查 | 拦得住什么 |
+|---|---|---|
+| 1 | `curl` 非 0 退出码 | 404、连接断开、超时 —— **最可靠** |
+| 2 | `bash -n` 语法检查 | 下载中途截断（必然语法不完整） |
+| 3 | 长度 ≥ 5000 字节 | 只收到响应头、极小文件 |
+| 4 | `PLUGIN_VERSION` 关键字 | 拿到的是错误页面（HTML/404 页） |
+
+**实测**：
+
+```
+3000 字节截断  → 第 3 层拦下
+8000 字节截断  → 第 2 层拦下（unexpected EOF）
+404 URL        → 第 1 层拦下
+真脚本         → 全部通过
+```
+
+**这四层不是密码学校验。** 它们防的是「操作失误 / 网络故障」，不是「恶意投毒」。真要防投毒需要独立哈希，本轮未做（见文末说明）。
 
 **这个区别已实测**：
 
@@ -265,15 +290,19 @@ dsh web --port 3081
 
 ---
 
-## 第 7 步：验证（手动三步，缺一不可）
+## 第 7 步：验证（三件独立证据，缺一不可）
 
-**不要只看一个文件就说装好了。** 下面三步各自证明不同的事：
+**先理解一件事**：`preset-declare.json` 是在**宿主启动、插件加载时**写入的，**不是你点「应用」时**。
 
-| 步 | 证明什么 | 不能证明什么 |
+所以它只能证明「插件加载成功」，**不能证明「应用写入了宿主」**。
+
+三件事必须分别验证：
+
+| 步 | 证明什么 | 证据在哪 |
 |---|---|---|
-| 1 | 装的是预期版本的**代码** | 代码有没有被加载 |
-| 2 | 本次启动的**页面**里有插件入口 | 点「应用」有没有生效 |
-| 3 | 本次操作**真的产生了变化** | —— |
+| 1 | 装的是预期版本的**代码** | `package.json` 的 version |
+| 2 | 本次启动**加载了插件** | `preset-declare.json` 的 `at` 是刚刚 |
+| 3 | 点应用后**真的改写了宿主** | 宿主源码里出现 `[dsh-purge]` 标记 |
 
 ---
 
@@ -289,123 +318,163 @@ node -p "require(process.env.USERPROFILE + '/.dsh/profiles/web/node_modules/dsh-
 node -p "require(require('os').homedir()+'/.dsh/profiles/web/node_modules/dsh-purge/package.json').version"
 ```
 
-**必须输出 `1.1.71-rc2.1`。**
-
-不是 `1.1.71`（旧版，缺修复）就回到第 3 步重装。
+**必须输出 `1.1.71-rc2.1`。** 是 `1.1.71` 就回到第 3 步重装。
 
 ---
 
-### 第 2 步：确认本次启动的页面有插件入口
+### 第 2 步：确认本次启动加载了插件
 
-**做**：
+**先记下启动时间**，或者在启动后立刻跑下面这个。
 
-```
-浏览器里（dsh web 刚打开的页面）
-→ 看会话标题旁边有没有 dsh-purge
-→ 或看左侧栏的 ＋ 里有没有 Purge
-```
-
-**通过标准**：能看到入口。
-
-**注意**：截图只能证明「界面长这样」，**不能**证明第 3 步成功。截图留作记录即可。
-
-**看不到入口**：
-- 确认是用 `dsh web` 启动的，不是桌面版 App
-- 确认启动前设了 `REDTEAM_PRESET_REFRESH=1`
-- `Ctrl+C` 停掉，重新 `dsh web`
-
----
-
-### 第 3 步：确认「应用」之后真的产生了变化
-
-**这是最关键的一步，也是最容易被旧文件骗过去的一步。**
-
-#### 先记下当前时间
-
-**Windows**
-```powershell
-Get-Date -Format "yyyy-MM-ddTHH:mm:ss"
-```
-
-**macOS**
+**macOS / Linux**
 ```bash
-date -u +"%Y-%m-%dT%H:%M:%SZ"
+f="$HOME/.dsh/redteam/preset-declare.json"
+[ -f "$f" ] || { echo "❌ 文件不存在 → 插件没加载过"; exit 1; }
+node -e '
+const d = require(process.argv[1]);
+const age = Math.floor((Date.now() - Date.parse(d.at)) / 1000);
+console.log("  at     :", d.at);
+console.log("  phase  :", d.phase);
+console.log("  plugins:", d.plugins);
+console.log("  broken :", String(d.broken));
+console.log("  本次启动后经过:", age, "秒");
+if (age > 600) { console.log("  ❌ 文件太旧，不是本次启动写的"); process.exit(1); }
+if (d.phase !== "registered") { console.log("  ❌ phase 不是 registered:", d.phase); process.exit(1); }
+if (d.broken) { console.log("  ❌ broken 不为空:", d.broken); process.exit(1); }
+if (d.plugins !== 19) { console.log("  ⚠️ plugins =", d.plugins, "（正常是 19）"); }
+console.log("  ✅ 本次启动已加载插件并注册成功");
+' "$f"
 ```
-
-#### 点「应用」
-
-```
-dsh-purge → 清洗 → 应用
-```
-
-**等它自动重启（10-30 秒）**
-
-#### 然后立刻查状态文件
 
 **Windows**
 ```powershell
 $f = "$env:USERPROFILE\.dsh\redteam\preset-declare.json"
-if (-not (Test-Path $f)) { throw "文件不存在 → 本次没生成" }
+if (-not (Test-Path $f)) { throw "文件不存在 → 插件没加载过" }
 $d = Get-Content $f -Raw | ConvertFrom-Json
-Write-Host "at     : $($d.at)"
-Write-Host "phase  : $($d.phase)"
-Write-Host "plugins: $($d.plugins)"
-Write-Host "broken : $($d.broken)"
+Write-Host "  at     : $($d.at)"
+Write-Host "  phase  : $($d.phase)"
+Write-Host "  plugins: $($d.plugins)"
+Write-Host "  broken : $($d.broken)"
 $age = [int]((Get-Date).ToUniversalTime() - [datetime]::Parse($d.at).ToUniversalTime()).TotalSeconds
-Write-Host "文件年龄: $age 秒"
-if ($age -gt 600) { Write-Host "❌ 文件太旧，不能证明本次成功" -ForegroundColor Red }
-elseif ($d.phase -eq "registered" -and -not $d.broken) { Write-Host "✅ 本次生成且状态正确" -ForegroundColor Green }
-else { Write-Host "❌ 本次生成但状态不对: phase=$($d.phase) broken=$($d.broken)" -ForegroundColor Red }
+Write-Host "  本次启动后经过: $age 秒"
+if ($age -gt 600) { throw "文件太旧，不是本次启动写的" }
+if ($d.phase -ne "registered") { throw "phase 不是 registered: $($d.phase)" }
+if ($d.broken) { throw "broken 不为空: $($d.broken)" }
+Write-Host "  ✅ 本次启动已加载插件并注册成功" -ForegroundColor Green
 ```
 
-**macOS**
+**为什么这一步够用**：`at` 在每次宿主启动时都会刷新。如果它距现在超过 10 分钟，说明你看的是上一次启动留下的文件。
+
+**这一步不能证明什么**：不能证明你点过「应用」。继续第 3 步。
+
+---
+
+### 第 3 步：确认「应用」真的写进了宿主
+
+**这才是「应用成功」的唯一直接证据。**
+
+**前置条件**：已经点过「应用」（`dsh-purge → 清洗 → 应用`），并且宿主已自动重启完成。
+
+**macOS / Linux**
 ```bash
-f="$HOME/.dsh/redteam/preset-declare.json"
-[ -f "$f" ] || { echo "❌ 文件不存在 → 本次没生成"; exit 1; }
 node -e '
-const d = require(process.argv[1]);
-const age = Math.floor((Date.now() - Date.parse(d.at)) / 1000);
-console.log("at     :", d.at);
-console.log("phase  :", d.phase);
-console.log("plugins:", d.plugins);
-console.log("broken :", String(d.broken));
-console.log("文件年龄:", age, "秒");
-if (age > 600) { console.log("❌ 文件太旧，不能证明本次成功"); process.exit(1); }
-if (d.phase === "registered" && !d.broken) { console.log("✅ 本次生成且状态正确"); }
-else { console.log("❌ 本次生成但状态不对"); process.exit(1); }
-' "$f"
+const { execSync } = require("child_process");
+const fs = require("fs");
+const path = require("path");
+
+let root = "";
+try { root = execSync("npm root -g", { encoding: "utf8" }).trim(); } catch (e) {
+  console.log("  ❌ 读不到 npm root -g"); process.exit(1);
+}
+
+const cands = [
+  path.join(root, "@deepseek-ai", "dsh-system-prompt", "lib", "index.js"),
+  path.join(root, "@deepseek-ai", "dsh", "node_modules", "@deepseek-ai", "dsh-system-prompt", "lib", "index.js"),
+  path.join(root, "dsh-system-prompt", "lib", "index.js"),
+  path.join(root, "node_modules", "@deepseek-ai", "dsh-system-prompt", "lib", "index.js"),
+];
+let found = null;
+for (const c of cands) { if (fs.existsSync(c)) { found = c; break; } }
+if (!found) {
+  console.log("  ❌ 四个候选路径都找不到 dsh-system-prompt");
+  cands.forEach(c => console.log("    " + c));
+  process.exit(1);
+}
+const text = fs.readFileSync(found, "utf8");
+const n = (text.match(/\[dsh-purge\]/g) || []).length;
+console.log("  宿主文件:", found);
+console.log("  [dsh-purge] 标记:", n, "处");
+if (n === 0) {
+  console.log("  ❌ 没有标记 → 应用没生效，或根本没点应用");
+  process.exit(1);
+}
+console.log("  ✅ 应用已写入宿主");
+'
 ```
 
-#### 通过标准
+**Windows**
+```powershell
+$root = (npm root -g).Trim()
+$cands = @(
+    (Join-Path $root "@deepseek-ai\dsh-system-prompt\lib\index.js"),
+    (Join-Path $root "@deepseek-ai\dsh\node_modules\@deepseek-ai\dsh-system-prompt\lib\index.js"),
+    (Join-Path $root "dsh-system-prompt\lib\index.js"),
+    (Join-Path $root "node_modules\@deepseek-ai\dsh-system-prompt\lib\index.js")
+)
+$found = $cands | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $found) {
+    Write-Host "  ❌ 四个候选路径都找不到 dsh-system-prompt" -ForegroundColor Red
+    $cands | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+    exit 1
+}
+$text = Get-Content $found -Raw
+$n = ([regex]::Matches($text, '\[dsh-purge\]')).Count
+Write-Host "  宿主文件: $found"
+Write-Host "  [dsh-purge] 标记: $n 处"
+if ($n -eq 0) {
+    Write-Host "  ❌ 没有标记 → 应用没生效，或根本没点应用" -ForegroundColor Red
+    exit 1
+}
+Write-Host "  ✅ 应用已写入宿主" -ForegroundColor Green
+```
+
+#### 期望输出
 
 ```
-✅ 文件存在
-✅ at 时间是刚刚（10 分钟内）
-✅ phase = registered
-✅ broken = null
-✅ plugins = 19
+宿主文件: /opt/homebrew/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-system-prompt/lib/index.js
+[dsh-purge] 标记: 6 处
+✅ 应用已写入宿主
 ```
 
-#### 这就是「旧文件骗人」的实际例子
+**标记数是 0 → 应用没成功。**
+
+---
+
+### 为什么不能用「10 分钟内的旧文件」判成功
+
+**反例**（这是真实会发生的）：
 
 ```
-昨天留下的文件：
-  {"phase":"registered","plugins":19,"broken":null,"at":"2026-11-13T10:44:28Z"}
-
-只看内容 → 判定成功   ← 误判！本次根本没启动成功
-看 at 时间 → 年龄 86400 秒 → 拒绝  ← 正确
+t0      点应用，成功 → preset-declare.json 更新，at = t0
+t0+60   你在做别的事
+t0+80   重启宿主，这次插件崩了 → 但 preset-declare.json 没被更新
+t0+140  你跑验收 → 文件年龄 = 140 秒 < 600 → 判定成功  ← 误判
 ```
 
-**所以第 3 步必须看 `at` 时间，不能只看 `phase`。**
+**`at` 是「插件加载时间」，不是「应用成功时间」。两者没有任何关系。**
+
+所以：
+- 第 2 步的 `at` 只能证明「这次启动加载了插件」
+- **必须靠第 3 步的宿主标记证明「应用生效」**
 
 ---
 
 ### 三步全过才算装好
 
 ```
-第 1 步  版本 = 1.1.71-rc2.1          ✅
-第 2 步  本次页面有插件入口            ✅
-第 3 步  at 是刚刚 + phase=registered + broken=null  ✅
+第 1 步  版本 = 1.1.71-rc2.1                        ✅
+第 2 步  preset-declare.json 是本次启动写的 + registered + broken=null  ✅
+第 3 步  宿主源码里有 [dsh-purge] 标记               ✅
 ```
 
 **任何一步不过，看 [修复指南](https://github.com/evan545295555-hash/Evans-repo/blob/master/docs/dsh-purge-%E4%BF%AE%E5%A4%8D%E6%8C%87%E5%8D%97.md)。**
@@ -450,9 +519,11 @@ if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
 
 ```bash
 u="https://ghfast.top/https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.sh"
-f="/tmp/dsh-install.sh"
+f="$(mktemp /tmp/dsh-install-XXXXXX.sh)"
+trap 'rm -f "$f"' EXIT
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
-[ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
+[ "$(wc -c <"$f")" -ge 5000 ] || { echo "文件长度异常"; exit 1; }
+bash -n "$f" || { echo "脚本语法错误，可能下载不完整"; exit 1; }
 bash "$f"
 ```
 
@@ -491,9 +562,9 @@ if ((Get-Item $f).Length -lt 500) { throw "下载不完整，请重试" }
 **macOS**
 ```bash
 u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/diagnose.sh"
-f="/tmp/dsh-diagnose.sh"
+f="$(mktemp /tmp/dsh-diagnose-XXXXXX.sh)"
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
-[ "$(wc -c <"$f")" -ge 500 ] || { echo "下载不完整"; exit 1; }
+[ "$(wc -c <"$f")" -ge 3000 ] || { echo "文件长度异常"; exit 1; }
 bash "$f"
 ```
 

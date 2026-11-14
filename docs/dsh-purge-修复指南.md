@@ -23,9 +23,10 @@ if ((Get-Item $f).Length -lt 500) { throw "下载不完整，请重试" }
 
 ```bash
 u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/diagnose.sh"
-f="/tmp/dsh-diagnose.sh"
+f="$(mktemp /tmp/dsh-diagnose-XXXXXX.sh)"
+trap 'rm -f "$f"' EXIT
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
-[ "$(wc -c <"$f")" -ge 500 ] || { echo "下载不完整"; exit 1; }
+[ "$(wc -c <"$f")" -ge 3000 ] || { echo "文件长度异常"; exit 1; }
 bash "$f"
 ```
 
@@ -153,9 +154,11 @@ if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
 ```bash
 # macOS
 u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.sh"
-f="/tmp/dsh-install.sh"
+f="$(mktemp /tmp/dsh-install-XXXXXX.sh)"
+trap 'rm -f "$f"' EXIT
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
-[ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
+[ "$(wc -c <"$f")" -ge 5000 ] || { echo "文件长度异常"; exit 1; }
+bash -n "$f" || { echo "脚本语法错误，可能下载不完整"; exit 1; }
 bash "$f"
 ```
 
@@ -211,9 +214,11 @@ if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
 ```bash
 # macOS
 u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.sh"
-f="/tmp/dsh-install.sh"
+f="$(mktemp /tmp/dsh-install-XXXXXX.sh)"
+trap 'rm -f "$f"' EXIT
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
-[ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
+[ "$(wc -c <"$f")" -ge 5000 ] || { echo "文件长度异常"; exit 1; }
+bash -n "$f" || { echo "脚本语法错误，可能下载不完整"; exit 1; }
 bash "$f"
 ```
 
@@ -241,9 +246,11 @@ if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
 # macOS
 rm -rf ~/.dsh/profiles/web/node_modules/dsh-purge
 u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.sh"
-f="/tmp/dsh-install.sh"
+f="$(mktemp /tmp/dsh-install-XXXXXX.sh)"
+trap 'rm -f "$f"' EXIT
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
-[ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
+[ "$(wc -c <"$f")" -ge 5000 ] || { echo "文件长度异常"; exit 1; }
+bash -n "$f" || { echo "脚本语法错误，可能下载不完整"; exit 1; }
 bash "$f"
 ```
 
@@ -381,9 +388,11 @@ if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
 ```bash
 # macOS
 u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.sh"
-f="/tmp/dsh-install.sh"
+f="$(mktemp /tmp/dsh-install-XXXXXX.sh)"
+trap 'rm -f "$f"' EXIT
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
-[ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
+[ "$(wc -c <"$f")" -ge 5000 ] || { echo "文件长度异常"; exit 1; }
+bash -n "$f" || { echo "脚本语法错误，可能下载不完整"; exit 1; }
 bash "$f"
 ```
 
@@ -415,9 +424,11 @@ if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
 ```bash
 # macOS
 u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.sh"
-f="/tmp/dsh-install.sh"
+f="$(mktemp /tmp/dsh-install-XXXXXX.sh)"
+trap 'rm -f "$f"' EXIT
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
-[ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
+[ "$(wc -c <"$f")" -ge 5000 ] || { echo "文件长度异常"; exit 1; }
+bash -n "$f" || { echo "脚本语法错误，可能下载不完整"; exit 1; }
 bash "$f"
 ```
 
@@ -866,9 +877,10 @@ if ((Get-Item $f).Length -lt 500) { throw "下载不完整，请重试" }
 ```bash
 # macOS
 u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/diagnose.sh"
-f="/tmp/dsh-diagnose.sh"
+f="$(mktemp /tmp/dsh-diagnose-XXXXXX.sh)"
+trap 'rm -f "$f"' EXIT
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
-[ "$(wc -c <"$f")" -ge 500 ] || { echo "下载不完整"; exit 1; }
+[ "$(wc -c <"$f")" -ge 3000 ] || { echo "文件长度异常"; exit 1; }
 bash "$f"
 ```
 
@@ -1048,9 +1060,11 @@ if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
 **macOS**
 ```bash
 u="https://ghfast.top/https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.sh"
-f="/tmp/dsh-install.sh"
+f="$(mktemp /tmp/dsh-install-XXXXXX.sh)"
+trap 'rm -f "$f"' EXIT
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
-[ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
+[ "$(wc -c <"$f")" -ge 5000 ] || { echo "文件长度异常"; exit 1; }
+bash -n "$f" || { echo "脚本语法错误，可能下载不完整"; exit 1; }
 bash "$f"
 ```
 
@@ -1073,6 +1087,41 @@ bash /tmp/install.sh
 
 # 修复后的完整验证清单
 
+## 重要：区分「插件加载」和「应用生效」
+
+| 你看到的 | 证明什么 | 不能证明什么 |
+|---|---|---|
+| `preset-declare.json` 的 `phase: registered` | 宿主启动时插件加载成功 | **是否点过「应用」** |
+| `preset-declare.json` 的 `at` 是刚刚 | 是本次启动写的 | **应用有没有写入宿主** |
+| **宿主源码里有 `[dsh-purge]` 标记** | **应用已生效** | —— |
+
+**`at` 在每次宿主启动时都会刷新**（组件加载即写入 `apply-start`，注册完成写 `registered`），所以「文件很新」不等于「应用成功」。
+
+查宿主标记（这是唯一直接证据）：
+
+```bash
+node -e '
+const { execSync } = require("child_process");
+const fs = require("fs"), path = require("path");
+const root = execSync("npm root -g", { encoding: "utf8" }).trim();
+const cands = [
+  path.join(root, "@deepseek-ai", "dsh-system-prompt", "lib", "index.js"),
+  path.join(root, "@deepseek-ai", "dsh", "node_modules", "@deepseek-ai", "dsh-system-prompt", "lib", "index.js"),
+  path.join(root, "dsh-system-prompt", "lib", "index.js"),
+  path.join(root, "node_modules", "@deepseek-ai", "dsh-system-prompt", "lib", "index.js"),
+];
+const found = cands.find(c => fs.existsSync(c));
+if (!found) { console.log("❌ 找不到 dsh-system-prompt"); process.exit(1); }
+const n = (fs.readFileSync(found, "utf8").match(/\[dsh-purge\]/g) || []).length;
+console.log("宿主文件:", found);
+console.log("[dsh-purge] 标记:", n, "处");
+if (n === 0) { console.log("❌ 应用没生效"); process.exit(1); }
+console.log("✅ 应用已写入宿主");
+'
+```
+
+## 然后跑诊断
+
 修完任何一项后，跑诊断确认：
 
 ```powershell
@@ -1087,9 +1136,10 @@ if ((Get-Item $f).Length -lt 500) { throw "下载不完整，请重试" }
 ```bash
 # macOS
 u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/diagnose.sh"
-f="/tmp/dsh-diagnose.sh"
+f="$(mktemp /tmp/dsh-diagnose-XXXXXX.sh)"
+trap 'rm -f "$f"' EXIT
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
-[ "$(wc -c <"$f")" -ge 500 ] || { echo "下载不完整"; exit 1; }
+[ "$(wc -c <"$f")" -ge 3000 ] || { echo "文件长度异常"; exit 1; }
 bash "$f"
 ```
 
