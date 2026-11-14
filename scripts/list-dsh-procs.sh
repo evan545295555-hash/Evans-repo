@@ -24,10 +24,29 @@ emit_procs() {
       printf 'QUERY_FAIL|找不到 %s\n' "$ps1"
       return 0
     fi
-    local SELF
+
+    # Git Bash 的 /d/a/... 路径 PowerShell -File 不认，必须转成 D:\a\...
+    local WPS1="$ps1"
+    if command -v cygpath >/dev/null 2>&1; then
+      WPS1="$(cygpath -w "$ps1" 2>/dev/null)" || WPS1="$ps1"
+      [ -z "$WPS1" ] && WPS1="$ps1"
+    fi
+
+    local SELF OUT RC
     for SELF in powershell pwsh powershell.exe; do
       if command -v "$SELF" >/dev/null 2>&1; then
-        "$SELF" -NoProfile -ExecutionPolicy Bypass -File "$ps1" 2>/dev/null | tr -d '\r'
+        # 不要 2>/dev/null：PowerShell 的错误要能看见，否则排查时一片空白
+        OUT="$("$SELF" -NoProfile -ExecutionPolicy Bypass -File "$WPS1" 2>&1)"
+        RC=$?
+        if [ "$RC" -ne 0 ]; then
+          printf 'QUERY_FAIL|PowerShell 退出码 %s: %s\n' "$RC" "$(printf '%s' "$OUT" | head -3 | tr '\n' ' ')"
+          return 0
+        fi
+        if [ -z "$OUT" ]; then
+          printf 'QUERY_FAIL|PowerShell 无输出（路径: %s）\n' "$WPS1"
+          return 0
+        fi
+        printf '%s\n' "$OUT" | tr -d '\r'
         return 0
       fi
     done
