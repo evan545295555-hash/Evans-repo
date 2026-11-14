@@ -219,6 +219,13 @@ jobs:
           RC=$?
           set -e
 
+          echo "  [diag] clean-all.sh 退出码: $RC"
+          echo "  [diag] 目标目录内容:"
+          ls -R "$T" 2>&1 | head -12 | sed 's/^/       /' || true
+          echo "  [diag] clean-all.sh 输出（前 20 行）:"
+          head -20 /tmp/pc.log 2>&1 | sed 's/^/       /' || true
+          echo "  [diag] -- end diag --"
+
           P=0; F=0
           [ "$RC" != "0" ] && { echo "  OK  退出码非 0"; P=$((P+1)); } || { echo "  FAIL 退出码为 0"; F=$((F+1)); }
           [ -d "$T/profiles/web/node_modules/dsh-purge" ] && { echo "  OK  插件目录仍在"; P=$((P+1)); } || { echo "  FAIL 插件目录被删"; F=$((F+1)); }
@@ -321,6 +328,13 @@ jobs:
           set -e
 
           AFTER=$(hash_tree "$T")
+
+          echo "  [diag] clean-all.sh 退出码: $RC"
+          echo "  [diag] 目标目录内容:"
+          ls -R "$T" 2>&1 | head -12 | sed 's/^/       /' || true
+          echo "  [diag] clean-all.sh 输出（前 20 行）:"
+          head -20 /tmp/pc.log 2>&1 | sed 's/^/       /' || true
+          echo "  [diag] -- end diag --"
 
           P=0; F=0
           [ "$RC" != "0" ] && { echo "  OK  退出码非 0"; P=$((P+1)); } || { echo "  FAIL 退出码为 0"; F=$((F+1)); }
