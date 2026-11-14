@@ -102,14 +102,26 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
+          hash_file() {
+            if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" 2>/dev/null | cut -d' ' -f1
+            elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" 2>/dev/null | cut -d' ' -f1
+            elif command -v md5 >/dev/null 2>&1; then md5 -q "$1" 2>/dev/null
+            else md5sum "$1" 2>/dev/null | cut -d' ' -f1; fi
+          }
+          hash_tree() {
+            (cd "$1" && find . -type f | sort | while read -r f; do printf '%s %s\n' "$f" "$(hash_file "$f")"; done \
+              | { if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1
+                  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 | cut -d' ' -f1
+                  else md5 2>/dev/null || md5sum | cut -d' ' -f1; fi; })
+          }
           T=$(mktemp -d); mkdir -p "$T/profiles/web"
           P=0; F=0
           check() {
             local name="$1" expect="$2"
             local B A RC
-            B=$(md5sum "$T/profiles/web/cordis.patch.yml" 2>/dev/null | cut -d' ' -f1 || md5 -q "$T/profiles/web/cordis.patch.yml")
+            B=$(hash_file "$T/profiles/web/cordis.patch.yml")
             DSH_HOME="$T" node scripts/clean-cordis-patch.cjs >/tmp/out 2>&1; RC=$?
-            A=$(md5sum "$T/profiles/web/cordis.patch.yml" 2>/dev/null | cut -d' ' -f1 || md5 -q "$T/profiles/web/cordis.patch.yml")
+            A=$(hash_file "$T/profiles/web/cordis.patch.yml")
             if [ "$expect" = "fail" ]; then
               if [ "$RC" != "0" ] && [ "$B" = "$A" ]; then
                 echo "  OK  $name: 拒绝且文件未变"; P=$((P+1))
@@ -168,6 +180,18 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
+          hash_file() {
+            if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" 2>/dev/null | cut -d' ' -f1
+            elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" 2>/dev/null | cut -d' ' -f1
+            elif command -v md5 >/dev/null 2>&1; then md5 -q "$1" 2>/dev/null
+            else md5sum "$1" 2>/dev/null | cut -d' ' -f1; fi
+          }
+          hash_tree() {
+            (cd "$1" && find . -type f | sort | while read -r f; do printf '%s %s\n' "$f" "$(hash_file "$f")"; done \
+              | { if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1
+                  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 | cut -d' ' -f1
+                  else md5 2>/dev/null || md5sum | cut -d' ' -f1; fi; })
+          }
           FAKE_REPO=$(mktemp -d); mkdir -p "$FAKE_REPO/scripts"
           cp scripts/clean-all.sh scripts/clean-cordis-patch.cjs scripts/clean-profile-deps.cjs "$FAKE_REPO/scripts/"
           cat > "$FAKE_REPO/scripts/list-dsh-procs.sh" <<'MOCK'
@@ -249,6 +273,18 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
+          hash_file() {
+            if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" 2>/dev/null | cut -d' ' -f1
+            elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" 2>/dev/null | cut -d' ' -f1
+            elif command -v md5 >/dev/null 2>&1; then md5 -q "$1" 2>/dev/null
+            else md5sum "$1" 2>/dev/null | cut -d' ' -f1; fi
+          }
+          hash_tree() {
+            (cd "$1" && find . -type f | sort | while read -r f; do printf '%s %s\n' "$f" "$(hash_file "$f")"; done \
+              | { if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1
+                  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 | cut -d' ' -f1
+                  else md5 2>/dev/null || md5sum | cut -d' ' -f1; fi; })
+          }
           FAKE_REPO=$(mktemp -d); mkdir -p "$FAKE_REPO/scripts"
           cp scripts/clean-all.sh scripts/clean-cordis-patch.cjs scripts/clean-profile-deps.cjs "$FAKE_REPO/scripts/"
           cat > "$FAKE_REPO/scripts/list-dsh-procs.sh" <<'MOCK'
@@ -263,13 +299,13 @@ jobs:
           printf 'patches:\n  - insert:\n      - id: dsh-purge\n        name: dsh-purge\n' > "$T/profiles/web/cordis.patch.yml"
           echo '{}' > "$T/redteam/preset-declare.json"
 
-          BEFORE=$(cd "$T" && find . -type f | sort | while read f; do echo "$f $(md5sum "$f" 2>/dev/null | cut -d' ' -f1)"; done | md5sum | cut -d' ' -f1)
+          BEFORE=$(hash_tree "$T")
 
           FH=$(mktemp -d)
           HOME="$FH" DSH_HOME="$T" bash "$FAKE_REPO/scripts/clean-all.sh" --yes > /tmp/rej.log 2>&1
           RC=$?
 
-          AFTER=$(cd "$T" && find . -type f | sort | while read f; do echo "$f $(md5sum "$f" 2>/dev/null | cut -d' ' -f1)"; done | md5sum | cut -d' ' -f1)
+          AFTER=$(hash_tree "$T")
 
           P=0; F=0
           [ "$RC" != "0" ] && { echo "  OK  退出码非 0"; P=$((P+1)); } || { echo "  FAIL 退出码为 0"; F=$((F+1)); }

@@ -26,6 +26,34 @@ ok()   { printf '  \033[1;32m✓\033[0m %s\n' "$*"; PASS=$((PASS+1)); }
 bad()  { printf '  \033[1;31m✗\033[0m %s\n' "$*"; FAIL=$((FAIL+1)); }
 head_(){ printf '\n\033[1;36m%s\033[0m\n' "$*"; }
 
+# 跨平台文件哈希（macOS / Linux / Windows Git Bash 都可用）
+hash_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" 2>/dev/null | cut -d' ' -f1
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" 2>/dev/null | cut -d' ' -f1
+  elif command -v md5 >/dev/null 2>&1; then
+    md5 -q "$1" 2>/dev/null
+  else
+    md5sum "$1" 2>/dev/null | cut -d' ' -f1
+  fi
+}
+
+hash_tree() {
+  local dir="$1"
+  (cd "$dir" && find . -type f | sort | while read -r f; do
+     printf '%s %s\n' "$f" "$(hash_file "$f")"
+   done | hash_stdin)
+}
+
+hash_stdin() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1
+  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 | cut -d' ' -f1
+  else md5 2>/dev/null || md5sum | cut -d' ' -f1
+  fi
+}
+
+
 # ══════════════════════════════════════════════════════
 head_ "T1 无关配置保留（YAML 清理范围）"
 # ══════════════════════════════════════════════════════
@@ -101,7 +129,7 @@ echo '{"dsh":{"profile":{"bundles":["dsh-purge","@deepseek-ai/dsh-base"]}},"depe
 
 DEFAULT_PKG="$HOME/.dsh/profiles/web/package.json"
 BEFORE=""
-[ -f "$DEFAULT_PKG" ] && BEFORE=$(md5 -q "$DEFAULT_PKG" 2>/dev/null || md5sum "$DEFAULT_PKG" | cut -d' ' -f1)
+[ -f "$DEFAULT_PKG" ] && BEFORE=$(hash_file "$DEFAULT_PKG")
 
 DSH_HOME="$H" node "$REPO/scripts/clean-profile-deps.cjs" >/dev/null 2>&1
 
@@ -111,7 +139,7 @@ DEP=$(node -p "require('$H/profiles/web/package.json').dependencies['dsh-purge']
 [ "$DEP" = "none" ] && ok "自定义 HOME 的 dsh-purge 依赖已删" || bad "依赖未删"
 
 if [ -f "$DEFAULT_PKG" ]; then
-  AFTER=$(md5 -q "$DEFAULT_PKG" 2>/dev/null || md5sum "$DEFAULT_PKG" | cut -d' ' -f1)
+  AFTER=$(hash_file "$DEFAULT_PKG")
   [ "$BEFORE" = "$AFTER" ] && ok "默认 ~/.dsh 未被改动" || bad "默认 ~/.dsh 被改了！"
 else
   ok "默认 ~/.dsh 无 profile，跳过对照"
