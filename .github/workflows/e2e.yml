@@ -1,0 +1,422 @@
+name: e2e
+
+# 目的：验证「客户下载了安装就能用」
+#
+# 分三层：
+#   L1 语法与逻辑   —— 脚本本身没写错（快，几十秒）
+#   L2 安装成功     —— install 脚本跑完，文件、版本、登记都对（中，5-15 分钟）
+#   L3 真的能跑     —— dsh web 起得来、HTTP 200、插件被加载（关键，15-25 分钟）
+#
+# 只做 L1/L2 是不够的：历史上多次出现「装成功了但 dsh web 报
+# Cannot find module node-pty」的情况，L3 才能抓到。
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "install.ps1"
+      - "install.sh"
+      - "diagnose.ps1"
+      - "diagnose.sh"
+      - "package.json"
+      - "lib/**"
+      - "cordis.patch.yml"
+      - ".github/workflows/e2e.yml"
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ══════════════════════════════════════════════════════════════
+  # L1 语法与逻辑（无宿主，秒级）
+  # ══════════════════════════════════════════════════════════════
+  lint:
+    name: L1 语法与逻辑
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: bash 语法
+        if: matrix.os != 'windows-latest'
+        run: |
+          bash -n install.sh && echo "install.sh OK"
+          bash -n diagnose.sh && echo "diagnose.sh OK"
+
+      - name: PowerShell 语法
+        shell: pwsh
+        run: |
+          foreach ($f in @("install.ps1", "diagnose.ps1")) {
+            if (-not (Test-Path $f)) { throw "缺少 $f" }
+            $e = $null; $t = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $f), [ref]$t, [ref]$e) | Out-Null
+            if ($e.Count -gt 0) {
+              $e | ForEach-Object { Write-Host "行 $($_.Extent.StartLineNumber): $($_.Message)" }
+              throw "$f 有 $($e.Count) 个语法错误"
+            }
+            Write-Host "$f OK ($($t.Count) tokens)"
+          }
+
+      - name: 静态检查（危险操作 / 变量边界 / 版本一致性）
+        run: node scripts/check-scripts.mjs
+
+  # ══════════════════════════════════════════════════════════════
+  # L2+L3 Windows：装完真的能跑 dsh web
+  # ══════════════════════════════════════════════════════════════
+  e2e-windows:
+    name: L2+L3 Windows / Node ${{ matrix.node }}
+    runs-on: windows-latest
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: 记录环境
+        shell: pwsh
+        run: |
+          Write-Host "node: $(node -v)"
+          Write-Host "npm : $(npm -v)"
+          Write-Host "cwd : $(Get-Location)"
+
+      - name: 装宿主 0.2.1-rc.2（含原生模块构建）
+        shell: pwsh
+        timeout-minutes: 20
+        run: |
+          npm i -g @deepseek-ai/dsh@0.2.1-rc.2
+          if ($LASTEXITCODE -ne 0) { throw "宿主安装失败: $LASTEXITCODE" }
+          Write-Host "=== 补跑原生模块构建 ==="
+          npm i -g @deepseek-ai/dsh@0.2.1-rc.2 `
+            --allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,node-pty,@google/genai,protobufjs
+          if ($LASTEXITCODE -ne 0) { throw "构建脚本失败: $LASTEXITCODE" }
+
+      - name: 定位 dsh bin.js
+        shell: pwsh
+        run: |
+          $root = (npm root -g).Trim()
+          $js = Join-Path $root "@deepseek-ai\dsh\lib\bin.js"
+          if (-not (Test-Path $js)) { throw "找不到 bin.js: $js" }
+          "DSH_JS=$js" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "DSH_HOME=$(Join-Path $env:USERPROFILE '.dsh')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "bin.js: $js"
+
+      - name: 断言原生模块已编译（关键）
+        shell: pwsh
+        run: |
+          $root = (npm root -g).Trim()
+          $dirs = @(
+            (Join-Path $root "@deepseek-ai\dsh\node_modules\node-pty"),
+            (Join-Path $root "@deepseek-ai\node-pty"),
+            (Join-Path $root "node-pty")
+          )
+          $found = $null
+          foreach ($d in $dirs) {
+            if (Test-Path (Join-Path $d "build\Release\pty.node")) { $found = Join-Path $d "build\Release\pty.node"; break }
+            $pre = Join-Path $d "prebuilds"
+            if (Test-Path $pre) {
+              $hit = Get-ChildItem $pre -Filter "pty.node" -Recurse -EA SilentlyContinue | Select-Object -First 1
+              if ($hit) { $found = $hit.FullName; break }
+            }
+          }
+          if (-not $found) { throw "node-pty 未编译，dsh web 会起不来" }
+          Write-Host "pty.node: $found"
+
+      - name: 端到端跑 install.ps1（模拟全新用户）
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          Write-Host "=== 清空 DSH_HOME 模拟全新环境 ==="
+          Remove-Item -Recurse -Force $env:DSH_HOME -EA SilentlyContinue
+
+          Write-Host "=== 执行 install.ps1 ==="
+          & (Join-Path $env:GITHUB_WORKSPACE "install.ps1")
+          if ($LASTEXITCODE -ne 0) { throw "install.ps1 退出码 $LASTEXITCODE" }
+
+          Write-Host "=== 文件级验收 ==="
+          $profile = Join-Path $env:DSH_HOME "profiles\web"
+          $pkg = Join-Path $profile "node_modules\dsh-purge\package.json"
+          if (-not (Test-Path $pkg)) { throw "包未就位" }
+          $v = (Get-Content $pkg -Raw | ConvertFrom-Json).version
+          Write-Host "  版本: $v"
+          if ($v -ne "1.1.71-rc2.1") { throw "版本不符: $v" }
+
+          $dep = (Get-Content (Join-Path $profile "package.json") -Raw | ConvertFrom-Json).dependencies.'dsh-purge'
+          Write-Host "  deps: $dep"
+          if (-not $dep) { throw "依赖未声明" }
+
+          $hit = (Select-String -Path (Join-Path $profile "cordis.patch.yml") -Pattern "dsh-purge" -SimpleMatch -EA SilentlyContinue).Count
+          Write-Host "  patch 引用: $hit"
+          if ($hit -lt 1) { throw "patch 未登记" }
+
+      - name: L3 启动 dsh web 并验证 HTTP（关键）
+        shell: pwsh
+        timeout-minutes: 8
+        run: |
+          Write-Host "=== 启动 dsh web（后台）==="
+          $log = Join-Path $env:RUNNER_TEMP "dsh-web.log"
+          $errLog = Join-Path $env:RUNNER_TEMP "dsh-web-err.log"
+          $env:REDTEAM_PRESET_REFRESH = "1"
+          $p = Start-Process -FilePath "node" `
+            -ArgumentList @($env:DSH_JS, "web", "--port", "3099", "--no-open") `
+            -PassThru -NoNewWindow `
+            -RedirectStandardOutput $log -RedirectStandardError $errLog
+
+          Write-Host "PID: $($p.Id)"
+
+          # 最多等 120 秒
+          # 注意：dsh web 的 ?token= 是一次性凭证
+          #   1) 首次 GET /?token=xxx  → 303 + Set-Cookie
+          #   2) 之后靠 cookie 访问 /  → 200
+          # 所以必须用 CookieContainer / -c -b 的方式判断 200，
+          # 直接看 401/303 会误判为失败。
+          $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+          $ok = $false
+          for ($i = 1; $i -le 24; $i++) {
+            Start-Sleep -Seconds 5
+            if ($p.HasExited) {
+              Write-Host "!! 进程已退出，exit=$($p.ExitCode)"
+              break
+            }
+            try {
+              $r = Invoke-WebRequest -Uri "http://127.0.0.1:3099/" `
+                     -WebSession $session -TimeoutSec 8 -UseBasicParsing -EA Stop
+              if ($r.StatusCode -eq 200) { $ok = $true; Write-Host "HTTP 200（第 $($i*5) 秒）"; break }
+            } catch {
+              $msg = $_.Exception.Message
+              if ($msg.Length -gt 70) { $msg = $msg.Substring(0,70) }
+              Write-Host "  [$($i*5)s] $msg"
+            }
+          }
+
+          Write-Host "`n=== stdout（尾 40 行）==="
+          if (Test-Path $log) { Get-Content $log -Tail 40 | Write-Host }
+          Write-Host "`n=== stderr（尾 40 行）==="
+          if (Test-Path $errLog) { Get-Content $errLog -Tail 40 | Write-Host }
+
+          if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force -EA SilentlyContinue }
+
+          if (-not $ok) {
+            # 抓关键错误
+            $all = ""
+            if (Test-Path $log) { $all += (Get-Content $log -Raw) }
+            if (Test-Path $errLog) { $all += (Get-Content $errLog -Raw) }
+            if ($all -match "Cannot find module[^\r\n]*") {
+              Write-Host "::error::缺少原生模块: $($Matches[0])"
+            }
+            throw "dsh web 未能在 120 秒内返回 HTTP 200"
+          }
+
+          Write-Host "`n=== L3 通过：dsh web 可访问 ==="
+
+      - name: 检查红队模式注册状态
+        shell: pwsh
+        if: always()
+        run: |
+          $st = Join-Path $env:DSH_HOME "redteam\preset-declare.json"
+          if (Test-Path $st) {
+            Write-Host "=== preset-declare.json ==="
+            Get-Content $st -Raw | Write-Host
+            $d = Get-Content $st -Raw | ConvertFrom-Json
+            Write-Host "phase=$($d.phase) plugins=$($d.plugins) broken=$($d.broken)"
+          } else {
+            Write-Host "::warning::preset-declare.json 未生成（需要点「应用」后才会生成）"
+          }
+
+  # ══════════════════════════════════════════════════════════════
+  # L2+L3 macOS
+  # ══════════════════════════════════════════════════════════════
+  e2e-macos:
+    name: L2+L3 macOS / Node ${{ matrix.node }}
+    runs-on: macos-latest
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: 记录环境
+        run: |
+          echo "node: $(node -v)"
+          echo "npm : $(npm -v)"
+          sw_vers
+
+      - name: 装宿主 0.2.1-rc.2（含原生模块构建）
+        timeout-minutes: 20
+        run: |
+          npm i -g @deepseek-ai/dsh@0.2.1-rc.2
+          echo "=== 补跑原生模块构建 ==="
+          npm i -g @deepseek-ai/dsh@0.2.1-rc.2 \
+            --allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,node-pty,@google/genai,protobufjs
+
+      - name: 定位 dsh bin.js
+        run: |
+          NPM_ROOT="$(npm root -g)"
+          DSH_JS="$NPM_ROOT/@deepseek-ai/dsh/lib/bin.js"
+          if [ ! -f "$DSH_JS" ]; then
+            DSH_JS="$NPM_ROOT/@deepseek-ai/dsh/lib/bin.js"
+            ls -la "$NPM_ROOT/@deepseek-ai/dsh/lib/" | head
+            echo "::error::找不到 bin.js"
+            exit 1
+          fi
+          echo "DSH_JS=$DSH_JS" >> "$GITHUB_ENV"
+          echo "DSH_HOME=$HOME/.dsh" >> "$GITHUB_ENV"
+          echo "bin.js: $DSH_JS"
+
+      - name: 断言原生模块已编译（关键）
+        run: |
+          NPM_ROOT="$(npm root -g)"
+          FOUND=""
+          for d in \
+            "$NPM_ROOT/@deepseek-ai/dsh/node_modules/node-pty" \
+            "$NPM_ROOT/@deepseek-ai/node-pty" \
+            "$NPM_ROOT/node-pty"; do
+            if [ -f "$d/build/Release/pty.node" ]; then FOUND="$d/build/Release/pty.node"; break; fi
+            if [ -d "$d/prebuilds" ]; then
+              hit="$(find "$d/prebuilds" -name pty.node -type f 2>/dev/null | head -1)"
+              if [ -n "$hit" ]; then FOUND="$hit"; break; fi
+            fi
+          done
+          if [ -z "$FOUND" ]; then
+            echo "::error::node-pty 未编译，dsh web 会起不来"
+            exit 1
+          fi
+          echo "pty.node: $FOUND"
+
+      - name: 端到端跑 install.sh（模拟全新用户）
+        timeout-minutes: 10
+        run: |
+          echo "=== 清空 DSH_HOME 模拟全新环境 ==="
+          rm -rf "$DSH_HOME"
+
+          echo "=== 执行 install.sh ==="
+          bash ./install.sh
+
+          echo "=== 文件级验收 ==="
+          PROFILE="$DSH_HOME/profiles/web"
+          PKG="$PROFILE/node_modules/dsh-purge/package.json"
+          [ -f "$PKG" ] || { echo "::error::包未就位"; exit 1; }
+          V="$(node -p "require('$PKG').version")"
+          echo "  版本: $V"
+          [ "$V" = "1.1.71-rc2.1" ] || { echo "::error::版本不符: $V"; exit 1; }
+
+          DEP="$(node -p "require('$PROFILE/package.json').dependencies['dsh-purge'] || ''")"
+          echo "  deps: $DEP"
+          [ -n "$DEP" ] || { echo "::error::依赖未声明"; exit 1; }
+
+          HIT="$(grep -c 'dsh-purge' "$PROFILE/cordis.patch.yml" 2>/dev/null || echo 0)"
+          echo "  patch 引用: $HIT"
+          [ "$HIT" -ge 1 ] || { echo "::error::patch 未登记"; exit 1; }
+
+      - name: L3 启动 dsh web 并验证 HTTP（关键）
+        timeout-minutes: 8
+        run: |
+          export REDTEAM_PRESET_REFRESH=1
+          LOG="$RUNNER_TEMP/dsh-web.log"
+          ERR="$RUNNER_TEMP/dsh-err.log"
+
+          echo "=== 启动 dsh web（后台）==="
+          node "$DSH_JS" web --port 3099 --no-open > "$LOG" 2> "$ERR" &
+          PID=$!
+          echo "PID: $PID"
+
+          # 从日志里取一次性 token（dsh web 启动时打印带 token 的 URL）
+          TOKEN=""
+          for i in $(seq 1 12); do
+            TOKEN="$(grep -oE 'token=[A-Za-z0-9_-]+' "$LOG" 2>/dev/null | head -1 | cut -d= -f2 || true)"
+            [ -n "$TOKEN" ] && break
+            sleep 2
+          done
+          if [ -z "$TOKEN" ]; then
+            echo "!! 日志里没拿到 token，输出日志"
+            cat "$LOG" || true; cat "$ERR" || true
+            kill "$PID" 2>/dev/null || true
+            echo "::error::dsh web 未打印带 token 的 URL"
+            exit 1
+          fi
+          echo "  token: ${TOKEN:0:16}..."
+
+          # ?token= 是一次性凭证：首次 303 + Set-Cookie，之后靠 cookie
+          # 必须用 cookie jar 判断最终 200，直接看 401/303 会误判
+          CK="$RUNNER_TEMP/ck.txt"
+          rm -f "$CK"
+          OK=0
+          for i in $(seq 1 24); do
+            sleep 5
+            if ! kill -0 "$PID" 2>/dev/null; then
+              echo "!! 进程已退出"
+              break
+            fi
+            CODE="$(curl -sL -c "$CK" -b "$CK" -o "$RUNNER_TEMP/page.html" \
+                    -w '%{http_code}' --max-time 10 \
+                    "http://127.0.0.1:3099/?token=$TOKEN" 2>/dev/null || echo 000)"
+            echo "  [$((i*5))s] HTTP $CODE"
+            if [ "$CODE" = "200" ]; then OK=1; break; fi
+          done
+
+          if [ -f "$RUNNER_TEMP/page.html" ]; then
+            echo "  页面大小: $(wc -c <"$RUNNER_TEMP/page.html") 字节"
+            head -c 200 "$RUNNER_TEMP/page.html" || true
+            echo ""
+          fi
+
+          echo ""
+          echo "=== stdout（尾 40 行）==="
+          tail -40 "$LOG" 2>/dev/null || true
+          echo "=== stderr（尾 40 行）==="
+          tail -40 "$ERR" 2>/dev/null || true
+
+          kill "$PID" 2>/dev/null || true
+
+          if [ "$OK" -ne 1 ]; then
+            ALL="$(cat "$LOG" "$ERR" 2>/dev/null || true)"
+            if echo "$ALL" | grep -q "Cannot find module"; then
+              echo "::error::$(echo "$ALL" | grep 'Cannot find module' | head -1)"
+            fi
+            echo "::error::dsh web 未能在 120 秒内返回 HTTP 200"
+            exit 1
+          fi
+
+          echo "=== L3 通过：dsh web 可访问 ==="
+
+      - name: 检查红队模式注册状态
+        if: always()
+        run: |
+          ST="$DSH_HOME/redteam/preset-declare.json"
+          if [ -f "$ST" ]; then
+            echo "=== preset-declare.json ==="
+            cat "$ST"
+          else
+            echo "::warning::preset-declare.json 未生成（需要点「应用」后才会生成）"
+          fi
+
+      - name: 上传日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-logs-node${{ matrix.node }}
+          path: |
+            ${{ runner.temp }}/dsh-web.log
+            ${{ runner.temp }}/dsh-err.log
+          if-no-files-found: ignore
