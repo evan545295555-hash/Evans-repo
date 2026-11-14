@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 列出 node 进程，标注哪些是当前这套 DSH
 # 用法: bash scripts/list-dsh-procs.sh [--kill]
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 KILL=0
 [ "${1:-}" = "--kill" ] && KILL=1
 
@@ -17,21 +18,63 @@ is_windows() {
 }
 
 emit_procs() {
-  if is_windows && command -v powershell >/dev/null 2>&1; then
-    powershell -NoProfile -Command "
-      Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" -ErrorAction SilentlyContinue |
-        ForEach-Object { if (\$_.CommandLine) { Write-Output (\"\$(\$_.ProcessId)|\$(\$_.CommandLine)\") } }
-    " 2>/dev/null | tr -d '\r'
-  else
-    ps -eo pid=,command= 2>/dev/null
+  if is_windows; then
+    local ps1="$SCRIPT_DIR/detect-dsh-procs.ps1"
+    if [ ! -f "$ps1" ]; then
+      printf 'QUERY_FAIL|找不到 %s\n' "$ps1"
+      return 0
+    fi
+    local SELF
+    for SELF in powershell pwsh powershell.exe; do
+      if command -v "$SELF" >/dev/null 2>&1; then
+        "$SELF" -NoProfile -ExecutionPolicy Bypass -File "$ps1" 2>/dev/null | tr -d '\r'
+        return 0
+      fi
+    done
+    printf 'QUERY_FAIL|找不到 powershell / pwsh\n'
+    return 0
   fi
+  # Unix：ps 输出 "  1234 command..."，转成 "1234|other|command..."
+  ps -eo pid=,command= 2>/dev/null | sed -n 's/^ *\([0-9][0-9]*\) */\1|other|/p'
 }
 
 emit_procs | while read -r line; do
-  # Windows 输出是 pid|command 格式，Unix 是 pid command 格式
+  # 统一格式：
+  #   pid|DSH|cmd | pid|other|cmd | pid|APP|cmd
+  #   QUERY_FAIL|reason | QUERY_OK_NO_MATCH|...
   case "$line" in
-    *"|"*) pid="${line%%|*}"; cmd="${line#*|}" ;;
-    *)     pid="$(echo "$line" | awk '{print $1}')"; cmd="$(echo "$line" | cut -d' ' -f2-)" ;;
+    QUERY_FAIL\|*)
+      printf 'QUERY_FAIL %s\n' "${line#QUERY_FAIL|}"
+      continue
+      ;;
+    QUERY_OK_NO_MATCH*)
+      printf 'QUERY_OK_NO_MATCH\n'
+      continue
+      ;;
+  esac
+
+  pid="${line%%|*}"
+  rest="${line#*|}"
+  kind="${rest%%|*}"
+  cmd="${rest#*|}"
+
+  case "$kind" in
+    DSH)
+      is_dsh=1
+      ;;
+    APP)
+      printf 'DSH   PID=%-7s %s  [桌面版 App]\n' "$pid" "$cmd"
+      echo "$pid" >> /tmp/.dsh-pids-$$
+      continue
+      ;;
+    other)
+      is_dsh=0
+      ;;
+    *)
+      # 非 Windows 的 pid|cmd 格式，回退
+      cmd="$rest"
+      is_dsh=0
+      ;;
   esac
   [ -z "$pid" ] && continue
   case "$cmd" in

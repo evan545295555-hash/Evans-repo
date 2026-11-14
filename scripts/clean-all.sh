@@ -65,7 +65,7 @@ REQUIRED="sessions skills redteam prompt-inject.md profiles/web/package.json pro
 if [ "$DRY" = "1" ]; then
   gray "会备份到: $BK"
   for item in $REQUIRED; do
-    [ -e "$DSH/$item" ] && gray "  $item" || gray "  $item（不存在，跳过）"
+    [ -e "$DSH/$item" ] && gray "  $item" || gray "  ${item}（不存在，跳过）"
   done
   ok "预演：备份步骤"
 else

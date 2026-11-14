@@ -147,12 +147,58 @@ DEFAULT_PKG="$HOME/.dsh/profiles/web/package.json"
 BEFORE=""
 [ -f "$DEFAULT_PKG" ] && BEFORE=$(hash_file "$DEFAULT_PKG")
 
-DSH_HOME="$H" node "$REPO/scripts/clean-profile-deps.cjs" >/dev/null 2>&1
+# ── 诊断：搞清 DSH_HOME、实际读取路径、退出码 ──
+PKG="$H/profiles/web/package.json"
+PKG_NATIVE="$PKG"
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*)
+    # Git Bash 的 /tmp/... 原生 node 不认，转成 Windows 路径
+    if command -v cygpath >/dev/null 2>&1; then
+      PKG_NATIVE="$(cygpath -w "$PKG" 2>/dev/null || echo "$PKG")"
+    fi
+    ;;
+esac
 
-NEW=$(node -p "try{require('$H/profiles/web/package.json').dsh.profile.bundles.join(',')}catch(e){"ERR:"+e.message}" 2>&1)
-[ "$NEW" = "@deepseek-ai/dsh-base" ] && ok "自定义 HOME 的 bundles 已清理（剩 base）" || bad "自定义 HOME 清理异常: [$NEW]"
-DEP=$(node -p "try{require('$H/profiles/web/package.json').dependencies['dsh-purge']||'none'}catch(e){"ERR"}" 2>&1)
-[ "$DEP" = "none" ] && ok "自定义 HOME 的 dsh-purge 依赖已删" || bad "依赖未删"
+echo "    [diag] DSH_HOME      = $H"
+echo "    [diag] package.json  = $PKG"
+echo "    [diag] 原生路径      = $PKG_NATIVE"
+echo "    [diag] 文件存在      = $([ -f "$PKG" ] && echo yes || echo no)"
+echo "    [diag] 清理前内容    = $(cat "$PKG" 2>/dev/null | tr -d '\n' | cut -c1-70)"
+
+# 跑清理
+set +e
+DSH_HOME="$H" node "$REPO/scripts/clean-profile-deps.cjs" >/tmp/t4-clean.log 2>&1
+CLEAN_RC=$?
+set -e
+echo "    [diag] 清理退出码    = $CLEAN_RC"
+echo "    [diag] 清理输出      = $(tr '\n' ' ' </tmp/t4-clean.log 2>/dev/null | cut -c1-100)"
+echo "    [diag] 清理后内容    = $(cat "$PKG" 2>/dev/null | tr -d '\n' | cut -c1-70)"
+
+# 用 node -e + argv 读（避免 -p 字符串插值路径问题）
+READ_OUT=$(set +e; node -e '
+const p = process.argv[1];
+try {
+  const d = JSON.parse(require("fs").readFileSync(p, "utf8"));
+  console.log("OK|" + (d.dsh && d.dsh.profile && d.dsh.profile.bundles || []).join(",") + "|" + Object.keys(d.dependencies || {}).join(","));
+} catch (e) {
+  console.log("ERR|" + e.code + "|" + e.message);
+}
+' "$PKG_NATIVE" 2>&1)
+READ_RC=$?
+echo "    [diag] 读取退出码    = $READ_RC"
+echo "    [diag] 读取结果      = $READ_OUT"
+
+case "$READ_OUT" in
+  OK\|*) NEW="${READ_OUT#OK|}"; NEW="${NEW%%|*}"; DEPS="${READ_OUT##*|}" ;;
+  *) bad "T4 读取失败: $READ_OUT"; NEW=""; DEPS="" ;;
+esac
+
+[ "$NEW" = "@deepseek-ai/dsh-base" ] && ok "自定义 HOME 的 bundles 已清理（剩 ${NEW}）" || bad "自定义 HOME 清理异常: [$NEW]"
+
+case ",$DEPS," in
+  *",dsh-purge,"*) bad "依赖未删（剩余: ${DEPS}）" ;;
+  *) ok "自定义 HOME 的 dsh-purge 依赖已删（剩余: ${DEPS:-空}）" ;;
+esac
 
 if [ -f "$DEFAULT_PKG" ]; then
   AFTER=$(hash_file "$DEFAULT_PKG")
