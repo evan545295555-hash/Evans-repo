@@ -4,9 +4,9 @@
 KILL=0
 [ "${1:-}" = "--kill" ] && KILL=1
 
-# 如果设置了 DSH_HOME，只匹配跑这个 DSH_HOME 的进程
-# 这样测试时不会误杀正在运行的实例
-DSH_PREFIX="${DSH_HOME:-}"
+# 只有显式设置 DSH_PROC_ISOLATE 时才做前缀隔离
+# 不用 DSH_HOME：那是宿主自己设的，会导致真实进程被误标为"其他实例"
+DSH_PREFIX="${DSH_PROC_ISOLATE:-}"
 
 ps -eo pid=,command= 2>/dev/null | while read -r pid cmd; do
   [ -z "$pid" ] && continue

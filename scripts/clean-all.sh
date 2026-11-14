@@ -159,6 +159,44 @@ else
   ok "备份已验证: $LATEST_BK"
 fi
 
+# ── 3.5. 预检所有清理操作（这是删任何东西之前的最后一道关）──
+say "3.5) 预检清理操作"
+if [ "$DRY" = "1" ]; then
+  gray "会预检 cordis.patch.yml 结构、package.json 可解析性"
+else
+  PRECHECK_FAIL=0
+
+  # 预检 YAML 结构
+  if [ -f "$REPO/scripts/clean-cordis-patch.cjs" ] && [ -f "$DSH/profiles/web/cordis.patch.yml" ]; then
+    if OUT=$(DSH_HOME="$DSH" node "$REPO/scripts/clean-cordis-patch.cjs" --check-only 2>&1); then
+      gray "cordis.patch.yml: $OUT"
+    else
+      printf '\033[1;31m  ✗ cordis.patch.yml 预检失败\033[0m\n'
+      echo "$OUT" | sed 's/^/      /'
+      PRECHECK_FAIL=1
+    fi
+  fi
+
+  # 预检 package.json 可解析
+  if [ -f "$DSH/profiles/web/package.json" ]; then
+    if node -e "JSON.parse(require('fs').readFileSync('$DSH/profiles/web/package.json','utf8'))" 2>/dev/null; then
+      gray "package.json: 可解析"
+    else
+      printf '\033[1;31m  ✗ package.json 解析失败\033[0m\n'
+      PRECHECK_FAIL=1
+    fi
+  fi
+
+  if [ "$PRECHECK_FAIL" = "1" ]; then
+    echo ""
+    die "预检失败，未删除任何文件、未改动任何配置。
+
+    请先手动修复上面报错的文件，或按错误提示手动编辑，
+    然后重新运行本脚本。"
+  fi
+  ok "预检通过，可以安全清理"
+fi
+
 # ── 4. 清插件目录 ─────────────────────────────────────────
 say "4) 删除插件目录"
 W="$DSH/profiles/web/node_modules"
