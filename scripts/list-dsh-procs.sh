@@ -29,7 +29,7 @@ ps -eo pid=,command= 2>/dev/null | while read -r pid cmd; do
       *) is_dsh=2 ;;   # 2 = 是 DSH 但不是这个 DSH_HOME 的
     esac
   fi
-  short=$(printf '%s' "$cmd" | cut -c1-78)
+  short=$(printf '%s' "$cmd" | cut -c1-160)
   if [ "$is_dsh" = "1" ]; then
     printf 'DSH   PID=%-7s %s\n' "$pid" "$short"
     echo "$pid" >> /tmp/.dsh-pids-$$

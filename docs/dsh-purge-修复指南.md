@@ -765,290 +765,96 @@ which -a dsh
 
 **诊断一片红，或者上面所有方法都试过还是不行。**
 
-## 第 1 步：备份你的数据
+**这一步会删文件，所以全部做成了脚本。** 备份 → 停进程 → 预检 → 清理，一条命令走完，任何一步失败都会停下，不会删错东西。
 
-**这一步别跳，而且必须确认备份成功再往下走。**
+---
 
-**备份清单**（前面的清理会改写后两项，必须一起备份）：
+## 第 1 步：运行清理脚本
+
+### 它做什么
 
 ```
-sessions                      会话记录
-skills                        技能
-redteam                       红队数据
-prompt-inject.md              提示词注入
-profiles/web/package.json     清理会改它
-profiles/web/cordis.patch.yml 清理会改它
+0. 列出 DSH 进程（只列，不杀）
+1. 备份（sessions / skills / redteam / prompt-inject.md / package.json / cordis.patch.yml）
+   ← 任一失败就退出，不进入清理
+2. 提示你手动停 DSH 进程（脚本不杀，给你 kill 命令自己执行）
+   ← 停完后按回车，脚本会重新检查，进程还在就拒绝继续
+3. 检查备份标记（没有就拒绝清理）
+3.5 预检 YAML 结构、package.json 可解析性
+   ← 结构异常就报错，不删任何东西
+4-7. 删插件目录、清 YAML、清 package.json、清预设
+8. 验证结果
 ```
 
-**Windows**
+### Windows
+
+**`clean-all.sh` 是 bash 脚本，Windows 需要先确认有 bash 环境。**
+
+**先检查**：
+
 ```powershell
-# 支持自定义 DSH_HOME
-$DSH = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE ".dsh" }
-if (-not (Test-Path $DSH)) { throw "找不到 .dsh 目录: $DSH" }
-Write-Host "数据目录: $DSH" -ForegroundColor Cyan
-
-$bk = Join-Path $env:USERPROFILE ("dsh-backup-" + (Get-Date -Format "yyyyMMdd-HHmm"))
-New-Item -ItemType Directory -Path $bk -Force | Out-Null
-
-$required = @(
-    "sessions", "skills", "redteam", "prompt-inject.md",
-    "profiles\web\package.json", "profiles\web\cordis.patch.yml"
-)
-$failed = @()
-foreach ($item in $required) {
-    $src = Join-Path $DSH $item
-    if (-not (Test-Path $src)) { Write-Host "  跳过（不存在）: $item" -ForegroundColor DarkGray; continue }
-    try {
-        $dst = Join-Path $bk $item
-        $dstDir = Split-Path $dst -Parent
-        if (-not (Test-Path $dstDir)) { New-Item -ItemType Directory -Path $dstDir -Force | Out-Null }
-        Copy-Item -Recurse -Force $src $dst -ErrorAction Stop
-        Write-Host "  ✓ $item" -ForegroundColor Green
-    } catch {
-        $failed += $item
-        Write-Host "  ✗ $item : $($_.Exception.Message)" -ForegroundColor Red
-    }
-}
-
-if ($failed.Count -gt 0) {
-    Write-Host ""
-    Write-Host "备份失败: $($failed -join ', ')" -ForegroundColor Red
-    Write-Host "已停止，未做任何清理。修好权限或磁盘后重试。" -ForegroundColor Yellow
-    exit 1
-}
-Write-Host ""
-Write-Host "备份完成: $bk" -ForegroundColor Cyan
+bash --version
 ```
 
-**macOS**
+| 结果 | 说明 |
+|---|---|
+| 出版本号（如 `GNU bash, version 5.x`） | ✅ 可以用下面的命令 |
+| 报「无法识别」 | 需要装 Git for Windows（自带 Git Bash），或按文末「无 bash 的 Windows 分步版」 |
+
+**有 bash 的话**：
+
+```powershell
+$SHA = "ba9d1ad5d28a9f4a55d658c390f5697537ddeeba"
+$BASE = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/$SHA/scripts"
+$D = Join-Path $env:TEMP ("dsh-clean-" + [guid]::NewGuid().ToString())
+New-Item -ItemType Directory -Path "$D\scripts" -Force | Out-Null
+
+$files = @("clean-all.sh", "clean-cordis-patch.cjs", "clean-profile-deps.cjs", "list-dsh-procs.sh")
+foreach ($f in $files) {
+    $dst = Join-Path "$D\scripts" $f
+    Invoke-WebRequest -Uri "$BASE/$f" -OutFile $dst -UseBasicParsing
+    if ((Get-Item $dst).Length -lt 500) { throw "下载 $f 长度异常" }
+    Write-Host "  OK  $f"
+}
+
+bash "$D/scripts/clean-all.sh"
+```
+
+**先预演**：
+
+```powershell
+bash "$D/scripts/clean-all.sh" --dry-run
+```
+
+**没有 bash**：跳到文末[「情况 7 补充：Windows 无 bash 分步版」](#情况-7-补充windows-无-bash-分步版)。
+
+### macOS / Linux
+
 ```bash
-# 支持自定义 DSH_HOME
-DSH="${DSH_HOME:-$HOME/.dsh}"
-[ -d "$DSH" ] || { echo "找不到 .dsh 目录: $DSH"; exit 1; }
-echo "数据目录: $DSH"
+SHA="ba9d1ad5d28a9f4a55d658c390f5697537ddeeba"
+BASE="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/$SHA/scripts"
+D="$(mktemp -d)"
+mkdir -p "$D/scripts"
 
-BK="$HOME/dsh-backup-$(date +%Y%m%d-%H%M)"
-mkdir -p "$BK" || { echo "无法创建备份目录"; exit 1; }
-
-FAILED=""
-for item in sessions skills redteam prompt-inject.md \
-            profiles/web/package.json profiles/web/cordis.patch.yml; do
-  src="$DSH/$item"
-  if [ ! -e "$src" ]; then echo "  跳过（不存在）: $item"; continue; fi
-  dst="$BK/$item"
-  mkdir -p "$(dirname "$dst")"
-  if cp -R "$src" "$dst" 2>&1; then
-    echo "  ✓ $item"
-  else
-    FAILED="$FAILED $item"
-    echo "  ✗ $item : 复制失败"
-  fi
+for f in clean-all.sh clean-cordis-patch.cjs clean-profile-deps.cjs list-dsh-procs.sh; do
+  curl -fsSL --retry 3 -o "$D/scripts/$f" "$BASE/$f" || { echo "下载 $f 失败"; exit 1; }
+  [ "$(wc -c <"$D/scripts/$f")" -ge 500 ] || { echo "$f 长度异常"; exit 1; }
+  bash -n "$D/scripts/$f" 2>/dev/null || { echo "$f 语法错误"; exit 1; }
 done
 
-if [ -n "$FAILED" ]; then
-  echo ""
-  echo "备份失败:$FAILED"
-  echo "已停止，未做任何清理。修好权限或磁盘后重试。"
-  exit 1
-fi
-echo ""
-echo "备份完成: $BK"
+chmod +x "$D/scripts/clean-all.sh" "$D/scripts/list-dsh-procs.sh"
+bash "$D/scripts/clean-all.sh"
 ```
 
-## 第 2 步：停所有进程
-
-```powershell
-# 只停 DSH 相关进程，不碰其他 node 项目
-$dshProcs = Get-CimInstance Win32_Process -Filter "Name='node.exe'" -EA SilentlyContinue |
-    Where-Object { $_.CommandLine -match 'dsh|deepseek' }
-foreach ($p in $dshProcs) {
-    Write-Host "  停止 node PID=$($p.ProcessId)" -ForegroundColor Gray
-    Stop-Process -Id $p.ProcessId -Force -EA SilentlyContinue
-}
-# 桌面版 App
-Get-Process "*DeepSeek Harness*" -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue
-Start-Sleep 2
-Write-Host "已停 DSH 相关进程" -ForegroundColor Green
-Write-Host "  其他 node 进程未动。如需查看：" -ForegroundColor DarkGray
-Get-Process node -EA SilentlyContinue | Select-Object Id, ProcessName | Format-Table -AutoSize | Out-String | Write-Host
-```
+**先预演一遍看会做什么**：
 
 ```bash
-# macOS
-pkill -f "dsh web" 2>/dev/null; pkill -f "dsh serve" 2>/dev/null; pkill -f "DeepSeek Harness" 2>/dev/null; sleep 2
+bash "$D/scripts/clean-all.sh" --dry-run
 ```
 
-## 第 3 步：清插件
+---
 
-**Windows**
-```powershell
-$W = "$env:USERPROFILE\.dsh\profiles\web"
-Remove-Item -Recurse -Force "$W\node_modules\dsh-purge" -EA SilentlyContinue
-Remove-Item -Recurse -Force "$W\node_modules\dsh-purge-community" -EA SilentlyContinue
-Remove-Item -Recurse -Force "$W\node_modules\dsh-purge-panel" -EA SilentlyContinue
-$U = "$env:USERPROFILE\.dsh"
-Remove-Item -Recurse -Force "$U\.agent-presets\redteam" -EA SilentlyContinue
-Remove-Item -Recurse -Force "$U\redteam" -EA SilentlyContinue
-Remove-Item -Recurse -Force "$U\dsh-purge-community" -EA SilentlyContinue
-Remove-Item -Recurse -Force "$U\dsh-purge" -EA SilentlyContinue
-Remove-Item -Force "$U\dsh-purge-launch.log" -EA SilentlyContinue
-Write-Host "插件与数据已清" -ForegroundColor Green
-```
-
-**macOS**
-```bash
-W="$HOME/.dsh/profiles/web"
-for p in dsh-purge dsh-purge-community dsh-purge-panel; do rm -rf "$W/node_modules/$p"; done
-U="$HOME/.dsh"
-rm -rf "$U/.agent-presets/redteam" "$U/redteam" "$U/dsh-purge-community" "$U/dsh-purge"
-rm -f "$U/dsh-purge-launch.log"
-echo "插件与数据已清"
-```
-
-## 第 4 步：清 package.json 里的登记
-
-**Windows**
-```powershell
-$js = @'
-// 只移除明确列出的插件，不按名称模糊匹配
-const fs=require('fs'),os=require('os'),path=require('path');
-const NAMES = new Set(['dsh-purge','dsh-purge-community','dsh-purge-panel']);
-const home = process.env.DSH_HOME || path.join(os.homedir(), '.dsh');
-const p = path.join(home, 'profiles', 'web', 'package.json');
-if(!fs.existsSync(p)){console.log('不存在，跳过');process.exit(0)}
-const raw = fs.readFileSync(p,'utf8');
-const d = JSON.parse(raw);
-let changed = false;
-if(d.dsh && d.dsh.profile && Array.isArray(d.dsh.profile.bundles)){
-  const b = d.dsh.profile.bundles.filter(x => !NAMES.has(x));
-  if(b.length !== d.dsh.profile.bundles.length){ d.dsh.profile.bundles = b; changed = true; }
-}
-for(const k of Object.keys(d.dependencies||{})){
-  if(NAMES.has(k)){ delete d.dependencies[k]; changed = true; }
-}
-if(!changed){ console.log('没有 dsh-purge 相关条目，文件未改动'); process.exit(0); }
-fs.copyFileSync(p, p + '.bak-' + Date.now());
-fs.writeFileSync(p, JSON.stringify(d,null,2) + '\n');
-console.log('bundles:', (d.dsh.profile.bundles||[]).join(','));
-'@
-$t="$env:TEMP\c.cjs"; $js|Set-Content $t -Encoding utf8; node $t
-```
-
-**macOS**
-```bash
-node -e "
-// 只移除明确列出的插件，不按名称模糊匹配
-const fs=require('fs'),os=require('os'),path=require('path');
-const NAMES = new Set(['dsh-purge','dsh-purge-community','dsh-purge-panel']);
-const home = process.env.DSH_HOME || path.join(os.homedir(), '.dsh');
-const p = path.join(home, 'profiles', 'web', 'package.json');
-if(!fs.existsSync(p)){console.log('不存在，跳过');process.exit(0)}
-const d = JSON.parse(fs.readFileSync(p,'utf8'));
-let changed = false;
-if(d.dsh && d.dsh.profile && Array.isArray(d.dsh.profile.bundles)){
-  const b = d.dsh.profile.bundles.filter(x => !NAMES.has(x));
-  if(b.length !== d.dsh.profile.bundles.length){ d.dsh.profile.bundles = b; changed = true; }
-}
-for(const k of Object.keys(d.dependencies||{})){
-  if(NAMES.has(k)){ delete d.dependencies[k]; changed = true; }
-}
-if(!changed){ console.log('没有 dsh-purge 相关条目，文件未改动'); process.exit(0); }
-fs.copyFileSync(p, p + '.bak-' + Date.now());
-fs.writeFileSync(p, JSON.stringify(d,null,2) + '
-');
-console.log('bundles:', (d.dsh.profile.bundles||[]).join(','));
-"
-```
-
-## 第 5 步：清 cordis.patch.yml 里的引用
-
-**Windows 和 macOS 相同**（用 node 执行）：
-
-**⚠️ 不要用正则批量删除。** 旧写法会连同一组里的其他插件、以及后面的独立规则一起删光（已实测：334 字节的文件只剩下 `patches:`）。
-
-**正确做法：逐行扫描，只删 `- id: dsh-purge` 那一条及其子键。**
-
-**Windows 和 macOS 相同**（把下面内容存成 `.cjs` 再执行）：
-
-```bash
-cat > /tmp/clean-patch.cjs <<'SCRIPT'
-#!/usr/bin/env node
-const fs = require("fs");
-const path = require("path");
-
-const NAMES = new Set(["dsh-purge", "dsh-purge-community", "dsh-purge-panel"]);
-const home = process.env.DSH_HOME || path.join(require("os").homedir(), ".dsh");
-const target = path.join(home, "profiles", "web", "cordis.patch.yml");
-
-if (!fs.existsSync(target)) { console.log("文件不存在，跳过"); process.exit(0); }
-
-function cleanYaml(text) {
-  const lines = text.split(/\r?\n/);
-  const out = [];
-  let i = 0, removed = 0;
-  while (i < lines.length) {
-    const line = lines[i];
-    const m = line.match(/^(\s*)- id:\s*(\S+)\s*$/);
-    if (m && NAMES.has(m[2])) {
-      const indent = m[1].length;
-      removed++;
-      i++;
-      while (i < lines.length) {
-        const l = lines[i];
-        if (l.trim() === "") { i++; continue; }
-        if (l.match(/^(\s*)/)[1].length > indent) { i++; continue; }
-        break;
-      }
-      continue;
-    }
-    out.push(line);
-    i++;
-  }
-  // 删掉变空的 - insert: 块
-  const out2 = [];
-  for (let k = 0; k < out.length; k++) {
-    const line = out[k];
-    if (/^\s*- insert:\s*$/.test(line)) {
-      const indent = line.match(/^(\s*)/)[1].length;
-      let j = k + 1, hasChild = false;
-      while (j < out.length) {
-        const l = out[j];
-        if (l.trim() === "") { j++; continue; }
-        if (l.match(/^(\s*)/)[1].length <= indent) break;
-        hasChild = true; j++;
-      }
-      if (!hasChild) { k = j - 1; continue; }
-    }
-    out2.push(line);
-  }
-  let result = out2.join("\n").replace(/\n{3,}/g, "\n\n");
-  if (!result.endsWith("\n")) result += "\n";
-  return { text: result, removed };
-}
-
-const before = fs.readFileSync(target, "utf8");
-const { text, removed } = cleanYaml(before);
-if (removed === 0) { console.log("没有 dsh-purge 条目，文件未改动"); process.exit(0); }
-fs.copyFileSync(target, target + ".bak-" + Date.now());
-fs.writeFileSync(target, text);
-console.log(`已移除 ${removed} 个条目，备份在 ${target}.bak-*`);
-SCRIPT
-node /tmp/clean-patch.cjs
-```
-
-**实测行为**（5 个场景）：
-
-| 场景 | 结果 |
-|---|---|
-| 同组有无关插件 + 后面有独立规则 | 只删 purge，其余全保留 |
-| 同时有 dsh-purge / -community / -panel | 三个都删，同组其他保留 |
-| 删完 `- insert:` 块变空 | 整块移除，不留空壳 |
-| 文件里没有 dsh-purge | 不改动文件 |
-| purge 在中间位置 | 前后的兄弟项都保留 |
-
-**期望输出**：`剩余 dsh-purge: 0`
-
-## 第 6 步：清宿主
+## 第 2 步：清宿主（脚本不管这一步）
 
 ```bash
 npm uninstall -g @deepseek-ai/dsh
@@ -1087,7 +893,9 @@ npm cache clean --force
 echo "宿主已清"
 ```
 
-## 第 7 步：跑诊断确认干净
+---
+
+## 第 3 步：跑诊断确认干净
 
 ```powershell
 # Windows
@@ -1118,7 +926,7 @@ bash "$f"
 8. 残留检查: 无输出
 ```
 
-## 第 8 步：按全新安装来
+## 第 4 步：按全新安装来
 
 看 [安装指南](https://github.com/evan545295555-hash/Evans-repo/blob/master/docs/dsh-purge-%E5%AE%89%E8%A3%85%E6%8C%87%E5%8D%97.md) 从第 1 步开始。
 
@@ -1448,3 +1256,153 @@ bash "$f"
 ---
 
 **任何情况都修不好，把 diagnose 的完整输出 + install 脚本最后 20 行发出来。**
+
+---
+
+# 情况 7 补充：Windows 无 bash 分步版
+
+**没有 Git Bash / WSL 时用这套。每一步都要看输出，失败就停。**
+
+## S1. 备份（失败必须停）
+
+```powershell
+$DSH = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE ".dsh" }
+if (-not (Test-Path $DSH)) { throw "找不到数据目录: $DSH" }
+Write-Host "数据目录: $DSH"
+
+$bk = Join-Path $env:USERPROFILE ("dsh-backup-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
+New-Item -ItemType Directory -Path $bk -Force | Out-Null
+
+$required = @("sessions","skills","redteam","prompt-inject.md",
+              "profiles\web\package.json","profiles\web\cordis.patch.yml")
+$failed = @()
+foreach ($item in $required) {
+    $src = Join-Path $DSH $item
+    if (-not (Test-Path $src)) { Write-Host "  跳过（不存在）: $item" -ForegroundColor DarkGray; continue }
+    try {
+        $dst = Join-Path $bk $item
+        $dd = Split-Path $dst -Parent
+        if (-not (Test-Path $dd)) { New-Item -ItemType Directory -Path $dd -Force | Out-Null }
+        Copy-Item -Recurse -Force $src $dst -ErrorAction Stop
+        Write-Host "  OK  $item" -ForegroundColor Green
+    } catch {
+        $failed += $item
+        Write-Host "  FAIL $item : $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+
+if ($failed.Count -gt 0) {
+    Write-Host ""
+    Write-Host "备份失败: $($failed -join ', ')" -ForegroundColor Red
+    Write-Host "已停止，未做任何清理。" -ForegroundColor Yellow
+    return
+}
+New-Item -ItemType File -Path (Join-Path $bk ".backup-complete") -Force | Out-Null
+Write-Host ""
+Write-Host "备份完成: $bk" -ForegroundColor Cyan
+```
+
+## S2. 手动停 DSH
+
+```powershell
+# 只列出，不杀
+gh --version >$null 2>&1
+$procs = Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -match '@deepseek-ai[\\/]dsh[\\/]lib[\\/]bin\.js' -or $_.CommandLine -match 'dsh\.cmd\s+(web|serve)' }
+$procs | ForEach-Object { Write-Host "  DSH PID=$($_.ProcessId)  $($_.CommandLine)" }
+Get-Process "*DeepSeek Harness*" -ErrorAction SilentlyContinue | ForEach-Object {
+    Write-Host "  App PID=$($_.Id)  $($_.ProcessName)"
+}
+Write-Host ""
+Write-Host "请手动退出桌面版 App，或在跑 dsh web 的终端按 Ctrl+C"
+Write-Host "确认停完后按回车继续"
+Read-Host
+```
+
+## S3. 检查备份标记
+
+```powershell
+$latest = Get-ChildItem $env:USERPROFILE -Filter "dsh-backup-*" -Directory -EA SilentlyContinue |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if (-not $latest -or -not (Test-Path (Join-Path $latest.FullName ".backup-complete"))) {
+    throw "找不到完整备份标记，拒绝清理"
+}
+Write-Host "备份已验证: $($latest.FullName)" -ForegroundColor Green
+```
+
+## S4. 清插件目录
+
+```powershell
+$W = Join-Path $DSH "profiles\web\node_modules"
+foreach ($p in @("dsh-purge","dsh-purge-community","dsh-purge-panel")) {
+    $d = Join-Path $W $p
+    if (Test-Path $d) { Remove-Item -Recurse -Force $d; Write-Host "  已删 $p" -ForegroundColor Green }
+}
+```
+
+## S5. 清 cordis.patch.yml
+
+**注意**：Windows 上如果没有 node，这一步跳过，手动编辑文件。
+
+```powershell
+$f = Join-Path $DSH "profiles\web\cordis.patch.yml"
+if (Test-Path $f) {
+    $js = @'
+const fs=require("fs");
+const p=process.argv[2];
+const IDS=new Set(["dsh-purge","dsh-purge-community","dsh-purge-panel"]);
+const lines=fs.readFileSync(p,"utf8").split(/\r?\n/);
+const out=[];let i=0,removed=0;
+while(i<lines.length){
+  const m=lines[i].match(/^(\s*)- id:\s*(\S+)\s*$/);
+  if(m&&IDS.has(m[2])){const ind=m[1].length;removed++;i++;
+    while(i<lines.length){const l=lines[i];if(l.trim()===""){i++;continue;}
+      if(l.match(/^(\s*)/)[1].length>ind){i++;continue;}break;}continue;}
+  out.push(lines[i]);i++;
+}
+if(removed===0){console.log("没有 dsh-purge 条目");process.exit(0);}
+fs.copyFileSync(p,p+".bak-"+Date.now());
+fs.writeFileSync(p,out.join("\n")+"\n");
+console.log("已移除 "+removed+" 个条目");
+'@
+    $tmp = Join-Path $env:TEMP "clean-patch.cjs"
+    $js | Set-Content -Path $tmp -Encoding utf8
+    node $tmp $f
+}
+```
+
+## S6. 清 package.json
+
+```powershell
+$f = Join-Path $DSH "profiles\web\package.json"
+if (Test-Path $f) {
+    $js = @'
+const fs=require("fs");
+const p=process.argv[2];
+const NAMES=new Set(["dsh-purge","dsh-purge-community","dsh-purge-panel"]);
+const d=JSON.parse(fs.readFileSync(p,"utf8"));
+let changed=false;
+if(d.dsh&&d.dsh.profile&&Array.isArray(d.dsh.profile.bundles)){
+  const b=d.dsh.profile.bundles.filter(x=>!NAMES.has(x));
+  if(b.length!==d.dsh.profile.bundles.length){d.dsh.profile.bundles=b;changed=true;}
+}
+for(const k of Object.keys(d.dependencies||{})){if(NAMES.has(k)){delete d.dependencies[k];changed=true;}}
+if(!changed){console.log("没有 dsh-purge 条目");process.exit(0);}
+fs.copyFileSync(p,p+".bak-"+Date.now());
+fs.writeFileSync(p,JSON.stringify(d,null,2)+"\n");
+console.log("bundles:",(d.dsh&&d.dsh.profile&&d.dsh.profile.bundles||[]).join(",")||"空");
+'@
+    $tmp = Join-Path $env:TEMP "clean-deps.cjs"
+    $js | Set-Content -Path $tmp -Encoding utf8
+    node $tmp $f
+}
+```
+
+## S7. 清预设
+
+```powershell
+Remove-Item -Recurse -Force (Join-Path $DSH ".agent-presets\redteam") -EA SilentlyContinue
+Remove-Item -Force (Join-Path $DSH "redteam\preset-declare.json") -EA SilentlyContinue
+Write-Host "已清预设" -ForegroundColor Green
+```
+

@@ -134,9 +134,10 @@ sleep 2
 
 OUT=$(DSH_PROC_ISOLATE="" bash "$REPO/scripts/list-dsh-procs.sh" 2>/dev/null)
 
-echo "$OUT" | grep -q "DSH.*unrelated.js" && bad "无关进程(deepseek-tools)被误判为 DSH" || ok "无关进程(deepseek-tools)未被判为 DSH"
-echo "$OUT" | grep -q "DSH.*@deepseek-ai/dsh/lib/bin.js" && ok "真 DSH 进程被识别" || bad "真 DSH 进程未被识别"
-echo "$OUT" | grep -q "other.*unrelated.js" && ok "无关进程标为 other" || ok "无关进程未列在 DSH 中"
+# 用 PID 匹配，避免命令行截断
+echo "$OUT" | grep -qE "^DSH   PID=$B( |$)" && ok "真 DSH 进程(PID=$B)被识别" || bad "真 DSH 进程(PID=$B)未被识别"
+echo "$OUT" | grep -qE "^DSH   PID=$A( |$)" && bad "无关进程(PID=$A)被误判为 DSH" || ok "无关进程(PID=$A)未被判为 DSH"
+echo "$OUT" | grep -qE "^other PID=$A( |\\[|$)" && ok "无关进程(PID=$A)标为 other" || bad "无关进程(PID=$A)未标 other"
 
 # ⚠️ 不执行 --kill
 # 本机跑 --kill 会杀掉承载当前会话的 DSH，导致任务中断。

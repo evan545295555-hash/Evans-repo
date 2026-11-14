@@ -12,7 +12,7 @@ name: e2e
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, "test/**"]
     paths:
       - "install.ps1"
       - "install.sh"
@@ -67,6 +67,220 @@ jobs:
 
       - name: 静态检查（危险操作 / 变量边界 / 版本一致性）
         run: node scripts/check-scripts.mjs
+
+  # ══════════════════════════════════════════════════════════════
+  # 清理逻辑测试：两个平台跑同一套
+  # ══════════════════════════════════════════════════════════════
+  cleanup-tests:
+    name: 清理逻辑 / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: 环境确认（bash / node）
+        shell: bash
+        run: |
+          echo "bash: $(bash --version | head -1)"
+          echo "node: $(node -v)"
+          echo "OS:   ${{ matrix.os }}"
+
+      - name: 主测试套件（T1-T5，不杀进程）
+        shell: bash
+        run: bash scripts/test-cleanup.sh
+
+      - name: YAML 异常结构专项
+        shell: bash
+        run: |
+          set -uo pipefail
+          T=$(mktemp -d); mkdir -p "$T/profiles/web"
+          P=0; F=0
+          check() {
+            local name="$1" expect="$2"
+            local B A RC
+            B=$(md5sum "$T/profiles/web/cordis.patch.yml" 2>/dev/null | cut -d' ' -f1 || md5 -q "$T/profiles/web/cordis.patch.yml")
+            DSH_HOME="$T" node scripts/clean-cordis-patch.cjs >/tmp/out 2>&1; RC=$?
+            A=$(md5sum "$T/profiles/web/cordis.patch.yml" 2>/dev/null | cut -d' ' -f1 || md5 -q "$T/profiles/web/cordis.patch.yml")
+            if [ "$expect" = "fail" ]; then
+              if [ "$RC" != "0" ] && [ "$B" = "$A" ]; then
+                echo "  OK  $name: 拒绝且文件未变"; P=$((P+1))
+              else
+                echo "  FAIL $name: rc=$RC changed=$([ "$B" != "$A" ] && echo yes || echo no)"; F=$((F+1))
+              fi
+            fi
+          }
+
+          # flow style
+          cat > "$T/profiles/web/cordis.patch.yml" <<'YAML'
+          patches:
+            - insert:
+                - {id: dsh-purge, name: dsh-purge}
+                - {id: keep, name: keep}
+          YAML
+          check "flow style" fail
+
+          # 块标量（多行字符串）内含假条目
+          cat > "$T/profiles/web/cordis.patch.yml" <<'YAML'
+          patches:
+            - insert:
+                - id: normal
+                  name: normal
+                  desc: |
+                    说明
+                    - id: dsh-purge
+                    文本
+          YAML
+          check "块标量内假条目" fail
+
+          # tab 缩进
+          printf 'patches:\n\t- insert:\n\t    - id: dsh-purge\n' > "$T/profiles/web/cordis.patch.yml"
+          check "tab 缩进" fail
+
+          # 正常结构应通过
+          cat > "$T/profiles/web/cordis.patch.yml" <<'YAML'
+          patches:
+            - insert:
+                - id: dsh-purge
+                  name: dsh-purge
+                - id: keep-me
+                  name: keep
+          YAML
+          DSH_HOME="$T" node scripts/clean-cordis-patch.cjs >/dev/null 2>&1
+          grep -q "keep-me" "$T/profiles/web/cordis.patch.yml" && { echo "  OK  正常结构: 无关插件保留"; P=$((P+1)); } || { echo "  FAIL 正常结构"; F=$((F+1)); }
+          grep -q "id: dsh-purge" "$T/profiles/web/cordis.patch.yml" && { echo "  FAIL purge 未删"; F=$((F+1)); } || { echo "  OK  正常结构: purge 已删"; P=$((P+1)); }
+
+          rm -rf "$T"
+          echo ""
+          echo "异常结构专项: 通过 $P / 失败 $F"
+          [ "$F" -gt 0 ] && exit 1
+          exit 0
+
+      - name: 完整流程（异常 YAML 时不删任何东西）
+        shell: bash
+        run: |
+          set -uo pipefail
+          FAKE_REPO=$(mktemp -d); mkdir -p "$FAKE_REPO/scripts"
+          cp scripts/clean-all.sh scripts/clean-cordis-patch.cjs scripts/clean-profile-deps.cjs "$FAKE_REPO/scripts/"
+          cat > "$FAKE_REPO/scripts/list-dsh-procs.sh" <<'MOCK'
+          #!/usr/bin/env bash
+          exit 0
+          MOCK
+          chmod +x "$FAKE_REPO/scripts/list-dsh-procs.sh"
+
+          T=$(mktemp -d)
+          mkdir -p "$T/profiles/web/node_modules/dsh-purge" "$T/redteam"
+          echo '{"dsh":{"profile":{"bundles":["dsh-purge"]}}}' > "$T/profiles/web/package.json"
+          printf 'patches:\n\t- insert:\n\t    - id: dsh-purge\n' > "$T/profiles/web/cordis.patch.yml"
+          echo '{}' > "$T/redteam/preset-declare.json"
+
+          FH=$(mktemp -d)
+          HOME="$FH" DSH_HOME="$T" bash "$FAKE_REPO/scripts/clean-all.sh" --yes > /tmp/pc.log 2>&1
+          RC=$?
+
+          P=0; F=0
+          [ "$RC" != "0" ] && { echo "  OK  退出码非 0"; P=$((P+1)); } || { echo "  FAIL 退出码为 0"; F=$((F+1)); }
+          [ -d "$T/profiles/web/node_modules/dsh-purge" ] && { echo "  OK  插件目录仍在"; P=$((P+1)); } || { echo "  FAIL 插件目录被删"; F=$((F+1)); }
+          [ -f "$T/redteam/preset-declare.json" ] && { echo "  OK  preset 未删"; P=$((P+1)); } || { echo "  FAIL preset 被删"; F=$((F+1)); }
+          grep -q "dsh-purge" "$T/profiles/web/cordis.patch.yml" && { echo "  OK  patch 未改"; P=$((P+1)); } || { echo "  FAIL patch 被改"; F=$((F+1)); }
+
+          # 对照：正常 YAML 应完成
+          T2=$(mktemp -d)
+          mkdir -p "$T2/profiles/web/node_modules/dsh-purge" "$T2/redteam"
+          echo '{"dsh":{"profile":{"bundles":["dsh-purge"]}}}' > "$T2/profiles/web/package.json"
+          printf 'patches:\n  - insert:\n      - id: dsh-purge\n        name: dsh-purge\n' > "$T2/profiles/web/cordis.patch.yml"
+          echo '{}' > "$T2/redteam/preset-declare.json"
+          HOME="$FH" DSH_HOME="$T2" bash "$FAKE_REPO/scripts/clean-all.sh" --yes > /tmp/ok.log 2>&1
+          RC2=$?
+          [ "$RC2" = "0" ] && { echo "  OK  正常结构完成清理"; P=$((P+1)); } || { echo "  FAIL 正常结构失败"; tail -5 /tmp/ok.log; F=$((F+1)); }
+          [ -d "$T2/profiles/web/node_modules/dsh-purge" ] && { echo "  FAIL 插件目录未删"; F=$((F+1)); } || { echo "  OK  插件目录已删"; P=$((P+1)); }
+
+          rm -rf "$T" "$T2" "$FH" "$FAKE_REPO" /tmp/pc.log /tmp/ok.log
+          echo ""
+          echo "完整流程: 通过 $P / 失败 $F"
+          [ "$F" -gt 0 ] && exit 1
+          exit 0
+
+      - name: 进程识别（不执行 kill）
+        shell: bash
+        run: |
+          set -uo pipefail
+          PT=$(mktemp -d)
+          mkdir -p "$PT/deepseek-tools" "$PT/@deepseek-ai/dsh/lib"
+          echo 'setInterval(()=>{},60000)' > "$PT/deepseek-tools/unrelated.js"
+          echo 'setInterval(()=>{},60000)' > "$PT/@deepseek-ai/dsh/lib/bin.js"
+
+          node "$PT/deepseek-tools/unrelated.js" &
+          A=$!
+          node "$PT/@deepseek-ai/dsh/lib/bin.js" &
+          B=$!
+          node -e 'setInterval(()=>{},60000)' &
+          C=$!
+          sleep 2
+
+          OUT=$(DSH_PROC_ISOLATE="" bash scripts/list-dsh-procs.sh 2>/dev/null)
+
+          P=0; F=0
+          # 用 PID 匹配，避免命令行被截断导致误判
+          echo "$OUT" | grep -qE "^DSH   PID=$B( |$)" && { echo "  OK  目标实例(PID=$B)被识别为 DSH"; P=$((P+1)); } || { echo "  FAIL 目标实例(PID=$B)未被识别"; F=$((F+1)); }
+          echo "$OUT" | grep -qE "^DSH   PID=$A( |$)" && { echo "  FAIL  无关进程(PID=$A)被判为 DSH"; F=$((F+1)); } || { echo "  OK  无关进程(PID=$A)未被判为 DSH"; P=$((P+1)); }
+          echo "$OUT" | grep -qE "^other PID=$A( |\\[|$)" && { echo "  OK  无关进程(PID=$A)标为 other"; P=$((P+1)); } || { echo "  FAIL  无关进程(PID=$A)未标 other"; F=$((F+1)); }
+          echo "$OUT" | grep -qE "^(DSH   |other )PID=$C( |$)" && { echo "  OK  普通 node(PID=$C)未被判为 DSH"; P=$((P+1)); } || { echo "  FAIL  普通 node 未出现"; F=$((F+1)); }
+
+          # 测试启动的进程由测试按 PID 收尾
+          kill -9 "$A" "$B" "$C" 2>/dev/null || true
+          wait 2>/dev/null || true
+
+          rm -rf "$PT"
+          echo ""
+          echo "进程识别: 通过 $P / 失败 $F"
+          [ "$F" -gt 0 ] && exit 1
+          exit 0
+
+      - name: 拒绝清理（目标实例仍在时）
+        shell: bash
+        run: |
+          set -uo pipefail
+          FAKE_REPO=$(mktemp -d); mkdir -p "$FAKE_REPO/scripts"
+          cp scripts/clean-all.sh scripts/clean-cordis-patch.cjs scripts/clean-profile-deps.cjs "$FAKE_REPO/scripts/"
+          cat > "$FAKE_REPO/scripts/list-dsh-procs.sh" <<'MOCK'
+          #!/usr/bin/env bash
+          echo "DSH   PID=99999   node /fake/@deepseek-ai/dsh/lib/bin.js"
+          MOCK
+          chmod +x "$FAKE_REPO/scripts/list-dsh-procs.sh"
+
+          T=$(mktemp -d)
+          mkdir -p "$T/profiles/web/node_modules/dsh-purge" "$T/redteam"
+          echo '{"dsh":{"profile":{"bundles":["dsh-purge"]}}}' > "$T/profiles/web/package.json"
+          printf 'patches:\n  - insert:\n      - id: dsh-purge\n        name: dsh-purge\n' > "$T/profiles/web/cordis.patch.yml"
+          echo '{}' > "$T/redteam/preset-declare.json"
+
+          BEFORE=$(cd "$T" && find . -type f | sort | while read f; do echo "$f $(md5sum "$f" 2>/dev/null | cut -d' ' -f1)"; done | md5sum | cut -d' ' -f1)
+
+          FH=$(mktemp -d)
+          HOME="$FH" DSH_HOME="$T" bash "$FAKE_REPO/scripts/clean-all.sh" --yes > /tmp/rej.log 2>&1
+          RC=$?
+
+          AFTER=$(cd "$T" && find . -type f | sort | while read f; do echo "$f $(md5sum "$f" 2>/dev/null | cut -d' ' -f1)"; done | md5sum | cut -d' ' -f1)
+
+          P=0; F=0
+          [ "$RC" != "0" ] && { echo "  OK  退出码非 0"; P=$((P+1)); } || { echo "  FAIL 退出码为 0"; F=$((F+1)); }
+          [ "$BEFORE" = "$AFTER" ] && { echo "  OK  所有文件指纹未变"; P=$((P+1)); } || { echo "  FAIL 有文件被改"; F=$((F+1)); }
+          [ -d "$T/profiles/web/node_modules/dsh-purge" ] && { echo "  OK  插件目录仍在"; P=$((P+1)); } || { echo "  FAIL 插件目录被删"; F=$((F+1)); }
+
+          rm -rf "$T" "$FH" "$FAKE_REPO" /tmp/rej.log
+          echo ""
+          echo "拒绝清理: 通过 $P / 失败 $F"
+          [ "$F" -gt 0 ] && exit 1
+          exit 0
 
   # ══════════════════════════════════════════════════════════════
   # 文档入口测试：用户照抄的命令真的能用吗
