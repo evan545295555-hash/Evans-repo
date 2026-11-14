@@ -147,7 +147,7 @@ npm -v
 $u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.ps1"
 $f = "$env:TEMP\dsh-install.ps1"
 Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
-if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
+if ((Get-Item $f).Length -lt 5000) { throw "文件长度异常，请重试" }
 & $f
 ```
 
@@ -207,7 +207,7 @@ node -p "require(require('os').homedir()+'/.dsh/profiles/web/node_modules/dsh-pu
 $u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.ps1"
 $f = "$env:TEMP\dsh-install.ps1"
 Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
-if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
+if ((Get-Item $f).Length -lt 5000) { throw "文件长度异常，请重试" }
 & $f
 ```
 
@@ -238,7 +238,7 @@ Remove-Item -Recurse -Force "$env:USERPROFILE\.dsh\profiles\web\node_modules\dsh
 $u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.ps1"
 $f = "$env:TEMP\dsh-install.ps1"
 Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
-if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
+if ((Get-Item $f).Length -lt 5000) { throw "文件长度异常，请重试" }
 & $f
 ```
 
@@ -284,16 +284,30 @@ Cannot find module '@deepseek-ai/dsh-system-prompt'
 ### 第 1 步：停所有进程
 
 ```powershell
-# Windows
-Get-Process node,"*DeepSeek*" -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue
+# 只停 DSH 相关进程，不碰其他 node 项目
+$dshProcs = Get-CimInstance Win32_Process -Filter "Name='node.exe'" -EA SilentlyContinue |
+    Where-Object { $_.CommandLine -match 'dsh|deepseek' }
+foreach ($p in $dshProcs) {
+    Write-Host "  停止 node PID=$($p.ProcessId)" -ForegroundColor Gray
+    Stop-Process -Id $p.ProcessId -Force -EA SilentlyContinue
+}
+# 桌面版 App
+Get-Process "*DeepSeek Harness*" -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue
 Start-Sleep 2
+Write-Host "已停 DSH 相关进程" -ForegroundColor Green
+Write-Host "  其他 node 进程未动。如需查看：" -ForegroundColor DarkGray
+Get-Process node -EA SilentlyContinue | Select-Object Id, ProcessName | Format-Table -AutoSize | Out-String | Write-Host
 ```
 
 ```bash
-# macOS
-pkill -f "DeepSeek Harness" 2>/dev/null
+# 只停 DSH 相关进程，不碰其他 node 项目
 pkill -f "dsh web" 2>/dev/null
+pkill -f "dsh serve" 2>/dev/null
+pkill -f "DeepSeek Harness" 2>/dev/null
 sleep 2
+echo "已停 DSH 相关进程"
+echo "  其他 node 进程未动。当前还在跑的："
+ps aux | grep "[n]ode" | awk '{printf "    PID %s  %s\n", $2, substr($0, index($0,$11), 60)}' | head -5
 ```
 
 ### 第 2 步：卸载宿主
@@ -307,13 +321,30 @@ npm uninstall -g @deepseek-ai/dsh
 **Windows**
 ```powershell
 $R = npm root -g
-if (Test-Path "$R\@deepseek-ai") {
-    Remove-Item -Recurse -Force "$R\@deepseek-ai"
-    Write-Host "已删 @deepseek-ai" -ForegroundColor Green
+# 只删 dsh 包本身，保留 @deepseek-ai 下的其他包
+$pkgDir = Join-Path $R "@deepseek-ai\dsh"
+if (Test-Path $pkgDir) {
+    Remove-Item -Recurse -Force $pkgDir
+    Write-Host "  已删 @deepseek-ai\dsh" -ForegroundColor Green
 }
+# 只有 @deepseek-ai 变空时才删整个目录
+$aiDir = Join-Path $R "@deepseek-ai"
+if (Test-Path $aiDir) {
+    $left = @(Get-ChildItem $aiDir -Force -EA SilentlyContinue)
+    if ($left.Count -eq 0) {
+        Remove-Item -Recurse -Force $aiDir
+        Write-Host "  @deepseek-ai 已空，一并删除" -ForegroundColor Green
+    } else {
+        Write-Host "  @deepseek-ai 下还有其他包，保留：" -ForegroundColor Yellow
+        $left | Select-Object -ExpandProperty Name | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
+    }
+}
+# dsh.cmd 在 npm 全局前缀下（不是 node_modules 里）
+$prefix = (npm prefix -g).Trim()
+Write-Host "  npm 全局前缀: $prefix" -ForegroundColor DarkGray
 foreach ($f in @("dsh","dsh.cmd","dsh.ps1")) {
-    $p = Join-Path $R $f
-    if (Test-Path $p) { Remove-Item -Force $p; Write-Host "已删 $f" -ForegroundColor Green }
+    $p = Join-Path $prefix $f
+    if (Test-Path $p) { Remove-Item -Force $p; Write-Host "  已删 $f" -ForegroundColor Green }
 }
 ```
 
@@ -321,9 +352,20 @@ foreach ($f in @("dsh","dsh.cmd","dsh.ps1")) {
 ```bash
 NPM_ROOT="$(npm root -g)"
 if [ -n "$NPM_ROOT" ] && [ -d "$NPM_ROOT" ]; then
-  rm -rf "$NPM_ROOT/@deepseek-ai"
-  NPM_BIN="$(dirname "$NPM_ROOT")/bin"
-  rm -f "$NPM_BIN/dsh" "$NPM_BIN/dsh.js"
+  # 只删 dsh 包本身，保留 @deepseek-ai 下的其他包
+  [ -d "$NPM_ROOT/@deepseek-ai/dsh" ] && rm -rf "$NPM_ROOT/@deepseek-ai/dsh" && echo "  已删 @deepseek-ai/dsh"
+  AI="$NPM_ROOT/@deepseek-ai"
+  if [ -d "$AI" ]; then
+    if [ -z "$(ls -A "$AI" 2>/dev/null)" ]; then
+      rmdir "$AI" && echo "  @deepseek-ai 已空，一并删除"
+    else
+      echo "  @deepseek-ai 下还有其他包，保留："
+      ls "$AI" | sed 's/^/    /'
+    fi
+  fi
+  NPM_PREFIX="$(npm prefix -g)"
+  echo "  npm 全局前缀: $NPM_PREFIX"
+  rm -f "$NPM_PREFIX/bin/dsh" "$NPM_PREFIX/bin/dsh.js"
   echo "已清理"
 fi
 ```
@@ -381,7 +423,7 @@ pty.node   或   conpty.node
 $u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.ps1"
 $f = "$env:TEMP\dsh-install.ps1"
 Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
-if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
+if ((Get-Item $f).Length -lt 5000) { throw "文件长度异常，请重试" }
 & $f
 ```
 
@@ -417,7 +459,7 @@ bash "$f"
 $u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.ps1"
 $f = "$env:TEMP\dsh-install.ps1"
 Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
-if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
+if ((Get-Item $f).Length -lt 5000) { throw "文件长度异常，请重试" }
 & $f
 ```
 
@@ -529,14 +571,24 @@ cat ~/.dsh/redteam/preset-declare.json
 ### 第 1 步：停宿主
 
 ```powershell
-# Windows
-Get-Process node,"*DeepSeek*" -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue
+# 只停 DSH 相关进程，不碰其他 node 项目
+$dshProcs = Get-CimInstance Win32_Process -Filter "Name='node.exe'" -EA SilentlyContinue |
+    Where-Object { $_.CommandLine -match 'dsh|deepseek' }
+foreach ($p in $dshProcs) {
+    Write-Host "  停止 node PID=$($p.ProcessId)" -ForegroundColor Gray
+    Stop-Process -Id $p.ProcessId -Force -EA SilentlyContinue
+}
+# 桌面版 App
+Get-Process "*DeepSeek Harness*" -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue
 Start-Sleep 2
+Write-Host "已停 DSH 相关进程" -ForegroundColor Green
+Write-Host "  其他 node 进程未动。如需查看：" -ForegroundColor DarkGray
+Get-Process node -EA SilentlyContinue | Select-Object Id, ProcessName | Format-Table -AutoSize | Out-String | Write-Host
 ```
 
 ```bash
 # macOS
-pkill -f "DeepSeek Harness" 2>/dev/null; pkill -f "dsh web" 2>/dev/null; sleep 2
+pkill -f "dsh web" 2>/dev/null; pkill -f "dsh serve" 2>/dev/null; pkill -f "DeepSeek Harness" 2>/dev/null; sleep 2
 ```
 
 ### 第 2 步：删预设与状态
@@ -715,43 +767,115 @@ which -a dsh
 
 ## 第 1 步：备份你的数据
 
-**这一步别跳。**
+**这一步别跳，而且必须确认备份成功再往下走。**
+
+**备份清单**（前面的清理会改写后两项，必须一起备份）：
+
+```
+sessions                      会话记录
+skills                        技能
+redteam                       红队数据
+prompt-inject.md              提示词注入
+profiles/web/package.json     清理会改它
+profiles/web/cordis.patch.yml 清理会改它
+```
 
 **Windows**
 ```powershell
-$bk = "$env:USERPROFILE\dsh-backup-$(Get-Date -Format 'yyyyMMdd-HHmm')"
+# 支持自定义 DSH_HOME
+$DSH = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE ".dsh" }
+if (-not (Test-Path $DSH)) { throw "找不到 .dsh 目录: $DSH" }
+Write-Host "数据目录: $DSH" -ForegroundColor Cyan
+
+$bk = Join-Path $env:USERPROFILE ("dsh-backup-" + (Get-Date -Format "yyyyMMdd-HHmm"))
 New-Item -ItemType Directory -Path $bk -Force | Out-Null
-foreach ($d in @("sessions","skills","redteam","prompt-inject.md")) {
-    $p = "$env:USERPROFILE\.dsh\$d"
-    if (Test-Path $p) {
-        Copy-Item -Recurse -Force $p "$bk\" -EA SilentlyContinue
-        Write-Host "  已备份 $d" -ForegroundColor Green
+
+$required = @(
+    "sessions", "skills", "redteam", "prompt-inject.md",
+    "profiles\web\package.json", "profiles\web\cordis.patch.yml"
+)
+$failed = @()
+foreach ($item in $required) {
+    $src = Join-Path $DSH $item
+    if (-not (Test-Path $src)) { Write-Host "  跳过（不存在）: $item" -ForegroundColor DarkGray; continue }
+    try {
+        $dst = Join-Path $bk $item
+        $dstDir = Split-Path $dst -Parent
+        if (-not (Test-Path $dstDir)) { New-Item -ItemType Directory -Path $dstDir -Force | Out-Null }
+        Copy-Item -Recurse -Force $src $dst -ErrorAction Stop
+        Write-Host "  ✓ $item" -ForegroundColor Green
+    } catch {
+        $failed += $item
+        Write-Host "  ✗ $item : $($_.Exception.Message)" -ForegroundColor Red
     }
 }
-Write-Host "备份位置: $bk" -ForegroundColor Cyan
+
+if ($failed.Count -gt 0) {
+    Write-Host ""
+    Write-Host "备份失败: $($failed -join ', ')" -ForegroundColor Red
+    Write-Host "已停止，未做任何清理。修好权限或磁盘后重试。" -ForegroundColor Yellow
+    exit 1
+}
+Write-Host ""
+Write-Host "备份完成: $bk" -ForegroundColor Cyan
 ```
 
 **macOS**
 ```bash
+# 支持自定义 DSH_HOME
+DSH="${DSH_HOME:-$HOME/.dsh}"
+[ -d "$DSH" ] || { echo "找不到 .dsh 目录: $DSH"; exit 1; }
+echo "数据目录: $DSH"
+
 BK="$HOME/dsh-backup-$(date +%Y%m%d-%H%M)"
-mkdir -p "$BK"
-for d in sessions skills redteam prompt-inject.md; do
-  [ -e "$HOME/.dsh/$d" ] && cp -R "$HOME/.dsh/$d" "$BK/" 2>/dev/null && echo "  已备份 $d"
+mkdir -p "$BK" || { echo "无法创建备份目录"; exit 1; }
+
+FAILED=""
+for item in sessions skills redteam prompt-inject.md \
+            profiles/web/package.json profiles/web/cordis.patch.yml; do
+  src="$DSH/$item"
+  if [ ! -e "$src" ]; then echo "  跳过（不存在）: $item"; continue; fi
+  dst="$BK/$item"
+  mkdir -p "$(dirname "$dst")"
+  if cp -R "$src" "$dst" 2>&1; then
+    echo "  ✓ $item"
+  else
+    FAILED="$FAILED $item"
+    echo "  ✗ $item : 复制失败"
+  fi
 done
-echo "备份位置: $BK"
+
+if [ -n "$FAILED" ]; then
+  echo ""
+  echo "备份失败:$FAILED"
+  echo "已停止，未做任何清理。修好权限或磁盘后重试。"
+  exit 1
+fi
+echo ""
+echo "备份完成: $BK"
 ```
 
 ## 第 2 步：停所有进程
 
 ```powershell
-# Windows
-Get-Process node,"*DeepSeek*" -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue
+# 只停 DSH 相关进程，不碰其他 node 项目
+$dshProcs = Get-CimInstance Win32_Process -Filter "Name='node.exe'" -EA SilentlyContinue |
+    Where-Object { $_.CommandLine -match 'dsh|deepseek' }
+foreach ($p in $dshProcs) {
+    Write-Host "  停止 node PID=$($p.ProcessId)" -ForegroundColor Gray
+    Stop-Process -Id $p.ProcessId -Force -EA SilentlyContinue
+}
+# 桌面版 App
+Get-Process "*DeepSeek Harness*" -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue
 Start-Sleep 2
+Write-Host "已停 DSH 相关进程" -ForegroundColor Green
+Write-Host "  其他 node 进程未动。如需查看：" -ForegroundColor DarkGray
+Get-Process node -EA SilentlyContinue | Select-Object Id, ProcessName | Format-Table -AutoSize | Out-String | Write-Host
 ```
 
 ```bash
 # macOS
-pkill -f "DeepSeek Harness" 2>/dev/null; pkill -f "dsh web" 2>/dev/null; sleep 2
+pkill -f "dsh web" 2>/dev/null; pkill -f "dsh serve" 2>/dev/null; pkill -f "DeepSeek Harness" 2>/dev/null; sleep 2
 ```
 
 ## 第 3 步：清插件
@@ -786,16 +910,26 @@ echo "插件与数据已清"
 **Windows**
 ```powershell
 $js = @'
+// 只移除明确列出的插件，不按名称模糊匹配
 const fs=require('fs'),os=require('os'),path=require('path');
-const p=path.join(os.homedir(),'.dsh','profiles','web','package.json');
-if(!fs.existsSync(p)){console.log('不存在');process.exit(0)}
-const d=JSON.parse(fs.readFileSync(p,'utf8'));
-if(d.dsh&&d.dsh.profile&&Array.isArray(d.dsh.profile.bundles))
-  d.dsh.profile.bundles=d.dsh.profile.bundles.filter(x=>!x.includes('purge'));
-for(const k of Object.keys(d.dependencies||{}))
-  if(k.includes('purge')) delete d.dependencies[k];
-fs.writeFileSync(p,JSON.stringify(d,null,2));
-console.log('bundles:',(d.dsh.profile.bundles||[]).join(','));
+const NAMES = new Set(['dsh-purge','dsh-purge-community','dsh-purge-panel']);
+const home = process.env.DSH_HOME || path.join(os.homedir(), '.dsh');
+const p = path.join(home, 'profiles', 'web', 'package.json');
+if(!fs.existsSync(p)){console.log('不存在，跳过');process.exit(0)}
+const raw = fs.readFileSync(p,'utf8');
+const d = JSON.parse(raw);
+let changed = false;
+if(d.dsh && d.dsh.profile && Array.isArray(d.dsh.profile.bundles)){
+  const b = d.dsh.profile.bundles.filter(x => !NAMES.has(x));
+  if(b.length !== d.dsh.profile.bundles.length){ d.dsh.profile.bundles = b; changed = true; }
+}
+for(const k of Object.keys(d.dependencies||{})){
+  if(NAMES.has(k)){ delete d.dependencies[k]; changed = true; }
+}
+if(!changed){ console.log('没有 dsh-purge 相关条目，文件未改动'); process.exit(0); }
+fs.copyFileSync(p, p + '.bak-' + Date.now());
+fs.writeFileSync(p, JSON.stringify(d,null,2) + '\n');
+console.log('bundles:', (d.dsh.profile.bundles||[]).join(','));
 '@
 $t="$env:TEMP\c.cjs"; $js|Set-Content $t -Encoding utf8; node $t
 ```
@@ -803,16 +937,26 @@ $t="$env:TEMP\c.cjs"; $js|Set-Content $t -Encoding utf8; node $t
 **macOS**
 ```bash
 node -e "
+// 只移除明确列出的插件，不按名称模糊匹配
 const fs=require('fs'),os=require('os'),path=require('path');
-const p=path.join(os.homedir(),'.dsh','profiles','web','package.json');
-if(!fs.existsSync(p)){console.log('不存在');process.exit(0)}
-const d=JSON.parse(fs.readFileSync(p,'utf8'));
-if(d.dsh&&d.dsh.profile&&Array.isArray(d.dsh.profile.bundles))
-  d.dsh.profile.bundles=d.dsh.profile.bundles.filter(x=>!x.includes('purge'));
-for(const k of Object.keys(d.dependencies||{}))
-  if(k.includes('purge')) delete d.dependencies[k];
-fs.writeFileSync(p,JSON.stringify(d,null,2));
-console.log('bundles:',(d.dsh.profile.bundles||[]).join(','));
+const NAMES = new Set(['dsh-purge','dsh-purge-community','dsh-purge-panel']);
+const home = process.env.DSH_HOME || path.join(os.homedir(), '.dsh');
+const p = path.join(home, 'profiles', 'web', 'package.json');
+if(!fs.existsSync(p)){console.log('不存在，跳过');process.exit(0)}
+const d = JSON.parse(fs.readFileSync(p,'utf8'));
+let changed = false;
+if(d.dsh && d.dsh.profile && Array.isArray(d.dsh.profile.bundles)){
+  const b = d.dsh.profile.bundles.filter(x => !NAMES.has(x));
+  if(b.length !== d.dsh.profile.bundles.length){ d.dsh.profile.bundles = b; changed = true; }
+}
+for(const k of Object.keys(d.dependencies||{})){
+  if(NAMES.has(k)){ delete d.dependencies[k]; changed = true; }
+}
+if(!changed){ console.log('没有 dsh-purge 相关条目，文件未改动'); process.exit(0); }
+fs.copyFileSync(p, p + '.bak-' + Date.now());
+fs.writeFileSync(p, JSON.stringify(d,null,2) + '
+');
+console.log('bundles:', (d.dsh.profile.bundles||[]).join(','));
 "
 ```
 
@@ -820,17 +964,87 @@ console.log('bundles:',(d.dsh.profile.bundles||[]).join(','));
 
 **Windows 和 macOS 相同**（用 node 执行）：
 
+**⚠️ 不要用正则批量删除。** 旧写法会连同一组里的其他插件、以及后面的独立规则一起删光（已实测：334 字节的文件只剩下 `patches:`）。
+
+**正确做法：逐行扫描，只删 `- id: dsh-purge` 那一条及其子键。**
+
+**Windows 和 macOS 相同**（把下面内容存成 `.cjs` 再执行）：
+
 ```bash
-node -e "
-const fs=require('fs'),os=require('os'),path=require('path');
-const p=path.join(os.homedir(),'.dsh','profiles','web','cordis.patch.yml');
-if(!fs.existsSync(p)){console.log('不存在');process.exit(0)}
-let t=fs.readFileSync(p,'utf8');
-t=t.replace(/\r?\n\s*- insert:\s*\r?\n((?:\s+- id: dsh-purge[^\r\n]*\r?\n)(?:\s+.*\r?\n)+)+/g,'\n');
-fs.writeFileSync(p,t);
-console.log('剩余 dsh-purge:',(t.match(/dsh-purge/g)||[]).length);
-"
+cat > /tmp/clean-patch.cjs <<'SCRIPT'
+#!/usr/bin/env node
+const fs = require("fs");
+const path = require("path");
+
+const NAMES = new Set(["dsh-purge", "dsh-purge-community", "dsh-purge-panel"]);
+const home = process.env.DSH_HOME || path.join(require("os").homedir(), ".dsh");
+const target = path.join(home, "profiles", "web", "cordis.patch.yml");
+
+if (!fs.existsSync(target)) { console.log("文件不存在，跳过"); process.exit(0); }
+
+function cleanYaml(text) {
+  const lines = text.split(/\r?\n/);
+  const out = [];
+  let i = 0, removed = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const m = line.match(/^(\s*)- id:\s*(\S+)\s*$/);
+    if (m && NAMES.has(m[2])) {
+      const indent = m[1].length;
+      removed++;
+      i++;
+      while (i < lines.length) {
+        const l = lines[i];
+        if (l.trim() === "") { i++; continue; }
+        if (l.match(/^(\s*)/)[1].length > indent) { i++; continue; }
+        break;
+      }
+      continue;
+    }
+    out.push(line);
+    i++;
+  }
+  // 删掉变空的 - insert: 块
+  const out2 = [];
+  for (let k = 0; k < out.length; k++) {
+    const line = out[k];
+    if (/^\s*- insert:\s*$/.test(line)) {
+      const indent = line.match(/^(\s*)/)[1].length;
+      let j = k + 1, hasChild = false;
+      while (j < out.length) {
+        const l = out[j];
+        if (l.trim() === "") { j++; continue; }
+        if (l.match(/^(\s*)/)[1].length <= indent) break;
+        hasChild = true; j++;
+      }
+      if (!hasChild) { k = j - 1; continue; }
+    }
+    out2.push(line);
+  }
+  let result = out2.join("\n").replace(/\n{3,}/g, "\n\n");
+  if (!result.endsWith("\n")) result += "\n";
+  return { text: result, removed };
+}
+
+const before = fs.readFileSync(target, "utf8");
+const { text, removed } = cleanYaml(before);
+if (removed === 0) { console.log("没有 dsh-purge 条目，文件未改动"); process.exit(0); }
+fs.copyFileSync(target, target + ".bak-" + Date.now());
+fs.writeFileSync(target, text);
+console.log(`已移除 ${removed} 个条目，备份在 ${target}.bak-*`);
+SCRIPT
+node /tmp/clean-patch.cjs
 ```
+
+**实测行为**（5 个场景）：
+
+| 场景 | 结果 |
+|---|---|
+| 同组有无关插件 + 后面有独立规则 | 只删 purge，其余全保留 |
+| 同时有 dsh-purge / -community / -panel | 三个都删，同组其他保留 |
+| 删完 `- insert:` 块变空 | 整块移除，不留空壳 |
+| 文件里没有 dsh-purge | 不改动文件 |
+| purge 在中间位置 | 前后的兄弟项都保留 |
 
 **期望输出**：`剩余 dsh-purge: 0`
 
@@ -856,8 +1070,18 @@ Write-Host "宿主已清" -ForegroundColor Green
 ```bash
 NPM_ROOT="$(npm root -g)"
 if [ -n "$NPM_ROOT" ] && [ -d "$NPM_ROOT" ]; then
-  rm -rf "$NPM_ROOT/@deepseek-ai"
-  rm -f "$(dirname "$NPM_ROOT")/bin/dsh"
+  # 只删 dsh 包本身，保留 @deepseek-ai 下的其他包
+  [ -d "$NPM_ROOT/@deepseek-ai/dsh" ] && rm -rf "$NPM_ROOT/@deepseek-ai/dsh" && echo "  已删 @deepseek-ai/dsh"
+  AI="$NPM_ROOT/@deepseek-ai"
+  if [ -d "$AI" ]; then
+    if [ -z "$(ls -A "$AI" 2>/dev/null)" ]; then
+      rmdir "$AI" && echo "  @deepseek-ai 已空，一并删除"
+    else
+      echo "  @deepseek-ai 下还有其他包，保留："
+      ls "$AI" | sed 's/^/    /'
+    fi
+  fi
+  rm -f "$(npm prefix -g)/bin/dsh"
 fi
 npm cache clean --force
 echo "宿主已清"
@@ -1024,15 +1248,53 @@ ls -t ~/.dsh/logs/startup-*.log 2>/dev/null | head -1 | xargs tail -30
 
 **没有** → 可能是浏览器缓存，`Ctrl+Shift+R` 强制刷新。
 
-## 第 3 步：还原宿主补丁再试
+## 第 3 步：还原宿主补丁
 
-**如果应用后崩了，先把补丁还原**：
+**分两种情况**：
+
+### 界面还能打开
 
 ```
 dsh-purge → 状态 → 还原
 ```
 
-**或者重装宿主**（见情况 3）。
+### 界面打不开
+
+**不能靠点按钮，用命令行还原**：
+
+**Windows**
+```powershell
+# 重装宿主 = 源码恢复原始，补丁自然消失
+npm i -g @deepseek-ai/dsh@0.2.1-rc.2 --ignore-scripts
+npm i -g @deepseek-ai/dsh@0.2.1-rc.2 --allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,node-pty,@google/genai,protobufjs
+```
+
+**macOS**
+```bash
+npm i -g @deepseek-ai/dsh@0.2.1-rc.2 --ignore-scripts
+npm i -g @deepseek-ai/dsh@0.2.1-rc.2 --allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,node-pty,@google/genai,protobufjs
+```
+
+**或者按情况 3 的完整重装流程走。**
+
+### 验证补丁已还原
+
+```bash
+node -e '
+const { execSync } = require("child_process");
+const fs = require("fs"), path = require("path");
+const root = execSync("npm root -g", { encoding: "utf8" }).trim();
+const cands = [
+  path.join(root, "@deepseek-ai", "dsh-system-prompt", "lib", "index.js"),
+  path.join(root, "@deepseek-ai", "dsh", "node_modules", "@deepseek-ai", "dsh-system-prompt", "lib", "index.js"),
+];
+const found = cands.find(c => fs.existsSync(c));
+if (!found) { console.log("找不到宿主文件"); process.exit(1); }
+const n = (fs.readFileSync(found, "utf8").match(/\[dsh-purge\]/g) || []).length;
+console.log("[dsh-purge] 标记:", n, "处");
+console.log(n === 0 ? "✅ 补丁已还原" : "⚠️ 仍有 " + n + " 处标记");
+'
+```
 
 ---
 
@@ -1053,7 +1315,7 @@ irm : 基础连接已经关闭
 $u = "https://ghfast.top/https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.ps1"
 $f = "$env:TEMP\dsh-install.ps1"
 Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
-if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
+if ((Get-Item $f).Length -lt 5000) { throw "文件长度异常，请重试" }
 & $f
 ```
 
@@ -1068,20 +1330,13 @@ bash -n "$f" || { echo "脚本语法错误，可能下载不完整"; exit 1; }
 bash "$f"
 ```
 
-## 或者先下载再执行（更稳）
+## 说明
 
-**Windows**
-```powershell
-$s = irm https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/install.ps1
-$s | Out-File "$env:TEMP\install.ps1" -Encoding utf8
-& "$env:TEMP\install.ps1"
-```
+上面的命令已经是「先下载再执行」，不需要另找写法。如果镜像也不通：
 
-**macOS**
-```bash
-curl -fsSL https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/install.sh -o /tmp/install.sh
-bash /tmp/install.sh
-```
+1. 用手机热点或换网络重试
+2. 稍后再试（GitHub 偶发不可达）
+3. 把原始报错贴出来，不要跳过校验直接执行
 
 ---
 
@@ -1156,13 +1411,22 @@ bash "$f"
 8. 残留检查          （无输出）
 ```
 
-**然后启动 + 点应用，再查一次**：
+## 然后启动 + 点应用，按安装指南的三件证据验收
 
-```bash
-cat ~/.dsh/redteam/preset-declare.json
-```
+**不要只看 `preset-declare.json`** —— 它在启动时就会写，和点应用无关。
 
-期望：`phase: registered` / `plugins: 19` / `broken: null`
+| 证据 | 命令 | 通过标准 |
+|---|---|---|
+| 1. 版本 | 见安装指南第 7 步第 1 小节 | `1.1.71-rc2.1` |
+| 2. 本次启动加载了插件 | 见安装指南第 7 步第 2 小节 | `at` 距现在 < 10 分钟 + `registered` + `broken: null` |
+| 3. 应用写进了宿主 | 见安装指南第 7 步第 3 小节 | 全新环境标记从 `0` 变 `> 0` |
+
+**完整步骤和命令在 [安装指南第 7 步](https://github.com/evan545295555-hash/Evans-repo/blob/master/docs/dsh-purge-%E5%AE%89%E8%A3%85%E6%8C%87%E5%8D%97.md)，这里不重复。**
+
+**特别提醒**：
+
+- 已有标记的环境（重装/重复应用）**无法用标记变化证明本次成功**，只能确认宿主处于应用状态，本次结果看界面提示
+- 补丁是幂等的，已含标记时跳过写入，所以标记数和 mtime 都不变
 
 ---
 
