@@ -116,7 +116,7 @@ npm -v
 ### Windows
 
 ```powershell
-$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.ps1"
+$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.ps1"
 $f = "$env:TEMP\dsh-install.ps1"
 Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
 if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
@@ -127,7 +127,7 @@ if (-not (Select-String -Path $f -Pattern "dsh-purge" -SimpleMatch -Quiet)) { th
 ### macOS
 
 ```bash
-u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.sh"
+u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.sh"
 f="/tmp/dsh-install.sh"
 curl -fsSL --retry 3 --retry-delay 2 -o "$f" "$u" || { echo "下载失败"; exit 1; }
 [ -s "$f" ] || { echo "文件为空"; exit 1; }
@@ -153,12 +153,12 @@ bash "$f"
 
 ### 关于固定版本
 
-上面 URL 里的 `__COMMIT_SHA__` 是**固定提交**，不是 `master`。
+上面 URL 里的 `7d2f3b20f51aba41b1fb3d6b5920c23c928039c8` 是**固定提交**，不是 `master`。
 
 - 好处：内容不会随时间变化，你装的和你看到的文档是同一份
 - 代价：后续修复不会自动到你手上，需要重新按新文档执行
 
-**如果你想用最新版**，把 URL 里的 `__COMMIT_SHA__` 换成 `master`，但仍建议保留「先下载再校验」的三步结构。
+**如果你想用最新版**，把 URL 里的 `7d2f3b20f51aba41b1fb3d6b5920c23c928039c8` 换成 `master`，但仍建议保留「先下载再校验」的三步结构。
 
 ---
 
@@ -441,7 +441,7 @@ npm i -g @deepseek-ai/dsh@0.2.1-rc.2 --allow-scripts=@deepseek-ai/dsh-subprocess
 GitHub 网络问题，重跑一次。多次失败可以试镜像：
 
 ```powershell
-$u = "https://ghfast.top/https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.ps1"
+$u = "https://ghfast.top/https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.ps1"
 $f = "$env:TEMP\dsh-install.ps1"
 Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
 if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
@@ -449,7 +449,7 @@ if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
 ```
 
 ```bash
-u="https://ghfast.top/https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.sh"
+u="https://ghfast.top/https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.sh"
 f="/tmp/dsh-install.sh"
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
 [ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
@@ -481,7 +481,7 @@ node -p "require(require('os').homedir()+'/.dsh/profiles/web/node_modules/dsh-pu
 
 **Windows**
 ```powershell
-$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/diagnose.ps1"
+$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/diagnose.ps1"
 $f = "$env:TEMP\dsh-diagnose.ps1"
 Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
 if ((Get-Item $f).Length -lt 500) { throw "下载不完整，请重试" }
@@ -490,7 +490,7 @@ if ((Get-Item $f).Length -lt 500) { throw "下载不完整，请重试" }
 
 **macOS**
 ```bash
-u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/diagnose.sh"
+u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/diagnose.sh"
 f="/tmp/dsh-diagnose.sh"
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
 [ "$(wc -c <"$f")" -ge 500 ] || { echo "下载不完整"; exit 1; }

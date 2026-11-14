@@ -12,7 +12,7 @@
 ### Windows
 
 ```powershell
-$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/diagnose.ps1"
+$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/diagnose.ps1"
 $f = "$env:TEMP\dsh-diagnose.ps1"
 Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
 if ((Get-Item $f).Length -lt 500) { throw "下载不完整，请重试" }
@@ -22,7 +22,7 @@ if ((Get-Item $f).Length -lt 500) { throw "下载不完整，请重试" }
 ### macOS
 
 ```bash
-u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/diagnose.sh"
+u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/diagnose.sh"
 f="/tmp/dsh-diagnose.sh"
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
 [ "$(wc -c <"$f")" -ge 500 ] || { echo "下载不完整"; exit 1; }
@@ -143,7 +143,7 @@ npm -v
 
 ```powershell
 # Windows
-$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.ps1"
+$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.ps1"
 $f = "$env:TEMP\dsh-install.ps1"
 Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
 if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
@@ -152,7 +152,7 @@ if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
 
 ```bash
 # macOS
-u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.sh"
+u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.sh"
 f="/tmp/dsh-install.sh"
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
 [ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
@@ -201,7 +201,7 @@ node -p "require(require('os').homedir()+'/.dsh/profiles/web/node_modules/dsh-pu
 
 ```powershell
 # Windows
-$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.ps1"
+$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.ps1"
 $f = "$env:TEMP\dsh-install.ps1"
 Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
 if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
@@ -210,7 +210,7 @@ if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
 
 ```bash
 # macOS
-u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.sh"
+u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.sh"
 f="/tmp/dsh-install.sh"
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
 [ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
@@ -230,7 +230,7 @@ bash "$f"
 ```powershell
 # Windows
 Remove-Item -Recurse -Force "$env:USERPROFILE\.dsh\profiles\web\node_modules\dsh-purge"
-$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.ps1"
+$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.ps1"
 $f = "$env:TEMP\dsh-install.ps1"
 Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
 if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
@@ -240,7 +240,7 @@ if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
 ```bash
 # macOS
 rm -rf ~/.dsh/profiles/web/node_modules/dsh-purge
-u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.sh"
+u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.sh"
 f="/tmp/dsh-install.sh"
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
 [ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
@@ -371,7 +371,7 @@ pty.node   或   conpty.node
 
 ```powershell
 # Windows
-$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.ps1"
+$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.ps1"
 $f = "$env:TEMP\dsh-install.ps1"
 Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
 if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
@@ -380,7 +380,7 @@ if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
 
 ```bash
 # macOS
-u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.sh"
+u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.sh"
 f="/tmp/dsh-install.sh"
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
 [ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
@@ -405,7 +405,7 @@ bash "$f"
 
 ```powershell
 # Windows
-$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.ps1"
+$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.ps1"
 $f = "$env:TEMP\dsh-install.ps1"
 Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
 if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
@@ -414,7 +414,7 @@ if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
 
 ```bash
 # macOS
-u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.sh"
+u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.sh"
 f="/tmp/dsh-install.sh"
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
 [ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
@@ -856,7 +856,7 @@ echo "宿主已清"
 
 ```powershell
 # Windows
-$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/diagnose.ps1"
+$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/diagnose.ps1"
 $f = "$env:TEMP\dsh-diagnose.ps1"
 Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
 if ((Get-Item $f).Length -lt 500) { throw "下载不完整，请重试" }
@@ -865,7 +865,7 @@ if ((Get-Item $f).Length -lt 500) { throw "下载不完整，请重试" }
 
 ```bash
 # macOS
-u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/diagnose.sh"
+u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/diagnose.sh"
 f="/tmp/dsh-diagnose.sh"
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
 [ "$(wc -c <"$f")" -ge 500 ] || { echo "下载不完整"; exit 1; }
@@ -1038,7 +1038,7 @@ irm : 基础连接已经关闭
 
 **Windows**
 ```powershell
-$u = "https://ghfast.top/https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.ps1"
+$u = "https://ghfast.top/https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.ps1"
 $f = "$env:TEMP\dsh-install.ps1"
 Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
 if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
@@ -1047,7 +1047,7 @@ if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
 
 **macOS**
 ```bash
-u="https://ghfast.top/https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.sh"
+u="https://ghfast.top/https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/install.sh"
 f="/tmp/dsh-install.sh"
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
 [ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
@@ -1077,7 +1077,7 @@ bash /tmp/install.sh
 
 ```powershell
 # Windows
-$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/diagnose.ps1"
+$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/diagnose.ps1"
 $f = "$env:TEMP\dsh-diagnose.ps1"
 Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
 if ((Get-Item $f).Length -lt 500) { throw "下载不完整，请重试" }
@@ -1086,7 +1086,7 @@ if ((Get-Item $f).Length -lt 500) { throw "下载不完整，请重试" }
 
 ```bash
 # macOS
-u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/diagnose.sh"
+u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/7d2f3b20f51aba41b1fb3d6b5920c23c928039c8/diagnose.sh"
 f="/tmp/dsh-diagnose.sh"
 curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
 [ "$(wc -c <"$f")" -ge 500 ] || { echo "下载不完整"; exit 1; }
