@@ -98,15 +98,31 @@ echo '{"dsh":{"profile":{"bundles":["dsh-purge"]}}}' > "$H/profiles/web/package.
 echo 'patches:' > "$H/profiles/web/cordis.patch.yml"
 echo '{"x":1}' > "$H/redteam/data.json"
 
-BK="$TMP/t3-bk"; mkdir -p "$BK"; chmod 555 "$BK"
+BK="$TMP/t3-bk"; mkdir -p "$BK"
+
+# 造「备份必然失败」：把源改成不可读（Windows 用不同方式）
 FAILED=""
-if cp -R "$H/redteam" "$BK/redteam" 2>/dev/null; then :; else FAILED="redteam"; fi
-if [ -n "$FAILED" ]; then
-  ok "备份失败被捕获"
-else
-  bad "备份失败未被捕获（当前用户可能绕过了只读权限）"
-fi
-chmod 755 "$BK"
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*)
+    # Windows: 用一个不存在的路径模拟「复制失败」
+    if cp -R "$H/does-not-exist" "$BK/x" 2>/dev/null; then
+      bad "Windows 上复制不存在的路径竟然成功"
+    else
+      FAILED="redteam"
+      ok "备份失败被捕获（Windows：源不存在）"
+    fi
+    ;;
+  *)
+    chmod 555 "$BK"
+    if cp -R "$H/redteam" "$BK/redteam" 2>/dev/null; then
+      bad "备份失败未被捕获（当前用户可能绕过了只读权限）"
+    else
+      FAILED="redteam"
+      ok "备份失败被捕获（Unix：目标只读）"
+    fi
+    chmod 755 "$BK"
+    ;;
+esac
 
 # 关键：备份失败后必须 exit 且不删
 if [ -n "$FAILED" ]; then
@@ -133,9 +149,9 @@ BEFORE=""
 
 DSH_HOME="$H" node "$REPO/scripts/clean-profile-deps.cjs" >/dev/null 2>&1
 
-NEW=$(node -p "require('$H/profiles/web/package.json').dsh.profile.bundles.join(',')" 2>/dev/null)
-[ "$NEW" = "@deepseek-ai/dsh-base" ] && ok "自定义 HOME 的 bundles 已清理（剩 base）" || bad "自定义 HOME 清理异常: $NEW"
-DEP=$(node -p "require('$H/profiles/web/package.json').dependencies['dsh-purge']||'none'" 2>/dev/null)
+NEW=$(node -p "try{require('$H/profiles/web/package.json').dsh.profile.bundles.join(',')}catch(e){"ERR:"+e.message}" 2>&1)
+[ "$NEW" = "@deepseek-ai/dsh-base" ] && ok "自定义 HOME 的 bundles 已清理（剩 base）" || bad "自定义 HOME 清理异常: [$NEW]"
+DEP=$(node -p "try{require('$H/profiles/web/package.json').dependencies['dsh-purge']||'none'}catch(e){"ERR"}" 2>&1)
 [ "$DEP" = "none" ] && ok "自定义 HOME 的 dsh-purge 依赖已删" || bad "依赖未删"
 
 if [ -f "$DEFAULT_PKG" ]; then

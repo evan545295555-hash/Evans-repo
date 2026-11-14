@@ -8,7 +8,31 @@ KILL=0
 # 不用 DSH_HOME：那是宿主自己设的，会导致真实进程被误标为"其他实例"
 DSH_PREFIX="${DSH_PROC_ISOLATE:-}"
 
-ps -eo pid=,command= 2>/dev/null | while read -r pid cmd; do
+# Git Bash 的 ps 不支持 -eo；Windows 上改用 PowerShell
+is_windows() {
+  case "$(uname -s 2>/dev/null)" in
+    MINGW*|MSYS*|CYGWIN*) return 0 ;;
+  esac
+  return 1
+}
+
+emit_procs() {
+  if is_windows && command -v powershell >/dev/null 2>&1; then
+    powershell -NoProfile -Command "
+      Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" -ErrorAction SilentlyContinue |
+        ForEach-Object { if (\$_.CommandLine) { Write-Output (\"\$(\$_.ProcessId)|\$(\$_.CommandLine)\") } }
+    " 2>/dev/null | tr -d '\r'
+  else
+    ps -eo pid=,command= 2>/dev/null
+  fi
+}
+
+emit_procs | while read -r line; do
+  # Windows 输出是 pid|command 格式，Unix 是 pid command 格式
+  case "$line" in
+    *"|"*) pid="${line%%|*}"; cmd="${line#*|}" ;;
+    *)     pid="$(echo "$line" | awk '{print $1}')"; cmd="$(echo "$line" | cut -d' ' -f2-)" ;;
+  esac
   [ -z "$pid" ] && continue
   case "$cmd" in
     *list-dsh-procs*) continue ;;
