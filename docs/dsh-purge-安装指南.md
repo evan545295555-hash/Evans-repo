@@ -154,9 +154,9 @@ bash "$f"
 | 层 | 检查 | 拦得住什么 |
 |---|---|---|
 | 1 | `curl` 非 0 退出码 | 404、连接断开、超时 —— **最可靠** |
-| 2 | `bash -n` 语法检查 | 下载中途截断（必然语法不完整） |
-| 3 | 长度 ≥ 5000 字节 | 只收到响应头、极小文件 |
-| 4 | `PLUGIN_VERSION` 关键字 | 拿到的是错误页面（HTML/404 页） |
+| 2 | 语法检查（`bash -n`） | 下载中途截断（多数情况语法不完整） |
+| 3 | 长度检查（≥ 5000 字节） | 只收到响应头、极小文件 |
+| 4 | 格式检查（`PLUGIN_VERSION` 关键字） | 拿到的是错误页面（HTML/404 页） |
 
 **实测**：
 
@@ -167,7 +167,9 @@ bash "$f"
 真脚本         → 全部通过
 ```
 
-**这四层不是密码学校验。** 它们防的是「操作失误 / 网络故障」，不是「恶意投毒」。真要防投毒需要独立哈希，本轮未做（见文末说明）。
+**这组检查是长度、格式和语法检查，不是密码学校验。**
+
+注意：若脚本恰好在一条完整语句后截断，语法检查仍可能通过。 它们防的是「操作失误 / 网络故障」，不是「恶意投毒」。真要防投毒需要独立哈希，本轮未做（见文末说明）。
 
 **这个区别已实测**：
 
@@ -369,84 +371,113 @@ Write-Host "  ✅ 本次启动已加载插件并注册成功" -ForegroundColor G
 
 ---
 
-### 第 3 步：确认「应用」真的写进了宿主
+### 第 3 步：确认「应用」的状态
 
-**这才是「应用成功」的唯一直接证据。**
+**必须先明确一件事**：宿主里的 `[dsh-purge]` 标记是**持久**的。上次应用过，这次没点应用，标记依然在。
 
-**前置条件**：已经点过「应用」（`dsh-purge → 清洗 → 应用`），并且宿主已自动重启完成。
+所以「有标记」不等于「本次应用成功」。要分两条路径看。
 
-**macOS / Linux**
+---
+
+#### 路径 A：全新环境（推荐这样验证）
+
+**操作前**先记录宿主标记数：
+
 ```bash
 node -e '
 const { execSync } = require("child_process");
-const fs = require("fs");
-const path = require("path");
-
-let root = "";
-try { root = execSync("npm root -g", { encoding: "utf8" }).trim(); } catch (e) {
-  console.log("  ❌ 读不到 npm root -g"); process.exit(1);
-}
-
+const fs = require("fs"), path = require("path");
+const root = execSync("npm root -g", { encoding: "utf8" }).trim();
 const cands = [
   path.join(root, "@deepseek-ai", "dsh-system-prompt", "lib", "index.js"),
   path.join(root, "@deepseek-ai", "dsh", "node_modules", "@deepseek-ai", "dsh-system-prompt", "lib", "index.js"),
   path.join(root, "dsh-system-prompt", "lib", "index.js"),
   path.join(root, "node_modules", "@deepseek-ai", "dsh-system-prompt", "lib", "index.js"),
 ];
-let found = null;
-for (const c of cands) { if (fs.existsSync(c)) { found = c; break; } }
-if (!found) {
-  console.log("  ❌ 四个候选路径都找不到 dsh-system-prompt");
-  cands.forEach(c => console.log("    " + c));
-  process.exit(1);
-}
-const text = fs.readFileSync(found, "utf8");
-const n = (text.match(/\[dsh-purge\]/g) || []).length;
-console.log("  宿主文件:", found);
-console.log("  [dsh-purge] 标记:", n, "处");
-if (n === 0) {
-  console.log("  ❌ 没有标记 → 应用没生效，或根本没点应用");
-  process.exit(1);
-}
-console.log("  ✅ 应用已写入宿主");
+const found = cands.find(c => fs.existsSync(c));
+if (!found) { console.log("找不到 dsh-system-prompt"); process.exit(1); }
+const n = (fs.readFileSync(found, "utf8").match(/\[dsh-purge\]/g) || []).length;
+console.log(n);
 '
 ```
 
-**Windows**
-```powershell
-$root = (npm root -g).Trim()
-$cands = @(
-    (Join-Path $root "@deepseek-ai\dsh-system-prompt\lib\index.js"),
-    (Join-Path $root "@deepseek-ai\dsh\node_modules\@deepseek-ai\dsh-system-prompt\lib\index.js"),
-    (Join-Path $root "dsh-system-prompt\lib\index.js"),
-    (Join-Path $root "node_modules\@deepseek-ai\dsh-system-prompt\lib\index.js")
-)
-$found = $cands | Where-Object { Test-Path $_ } | Select-Object -First 1
-if (-not $found) {
-    Write-Host "  ❌ 四个候选路径都找不到 dsh-system-prompt" -ForegroundColor Red
-    $cands | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
-    exit 1
+**记住这个数字。** 全新环境应该是 `0`。
+
+然后点「应用」，等宿主自动重启，再跑一次同样的命令。
+
+| 操作前 | 操作后 | 判定 |
+|---|---|---|
+| `0` | `> 0` | ✅ **本次应用成功** |
+| `0` | `0` | ❌ 应用没生效 |
+| `> 0` | `> 0` | ⚠️ 见路径 B |
+| `> 0` | `< 操作前` | ❌ 补丁被还原了 |
+
+---
+
+#### 路径 B：已有标记的环境（重装/重复应用）
+
+**已经应用过，标记一直在。此时无法用标记变化证明「本次操作成功」。**
+
+**为什么**：补丁是幂等的（`core.js:2215`：`if (text.includes("[dsh-purge]")) return true;`），已含标记时直接跳过，不再写入。所以：
+
+- 标记数量不变
+- 文件 mtime 也可能不变
+
+**这时只能这样确认**：
+
+| 证据 | 能证明什么 |
+|---|---|
+| 宿主有 `[dsh-purge]` 标记 | 宿主**当前处于已应用状态** |
+| 界面显示「应用 N 项 / 失败 0 项」 | 本次操作**执行了**，且没有失败项 |
+| 两者都有 | 可以认为本次没有破坏已有状态 |
+
+**不能声称**：「本次应用成功写入了 N 处」——因为可能是上次写的。
+
+**如果你需要严格证明本次写入**：先点「状态 → 还原」，确认标记消失（0 处），再点「应用」，确认标记回来。这样就是路径 A 了。
+
+---
+
+#### 一条命令走完整判断
+
+```bash
+# 用法: 把 BEFORE 改成你操作前记下的数字
+BEFORE=0
+node -e '
+const { execSync } = require("child_process");
+const fs = require("fs"), path = require("path");
+const before = Number(process.argv[1] || "NaN");
+const root = execSync("npm root -g", { encoding: "utf8" }).trim();
+const cands = [
+  path.join(root, "@deepseek-ai", "dsh-system-prompt", "lib", "index.js"),
+  path.join(root, "@deepseek-ai", "dsh", "node_modules", "@deepseek-ai", "dsh-system-prompt", "lib", "index.js"),
+  path.join(root, "dsh-system-prompt", "lib", "index.js"),
+  path.join(root, "node_modules", "@deepseek-ai", "dsh-system-prompt", "lib", "index.js"),
+];
+const found = cands.find(c => fs.existsSync(c));
+if (!found) { console.log("❌ 找不到 dsh-system-prompt"); process.exit(1); }
+const after = (fs.readFileSync(found, "utf8").match(/\[dsh-purge\]/g) || []).length;
+console.log("宿主文件:", found);
+console.log("操作前:", isNaN(before) ? "未记录" : before, "处");
+console.log("操作后:", after, "处");
+if (isNaN(before)) {
+  console.log("⚠️ 没记录操作前状态 → 只能确认宿主当前有标记，不能确认本次应用成功");
+  process.exit(2);
 }
-$text = Get-Content $found -Raw
-$n = ([regex]::Matches($text, '\[dsh-purge\]')).Count
-Write-Host "  宿主文件: $found"
-Write-Host "  [dsh-purge] 标记: $n 处"
-if ($n -eq 0) {
-    Write-Host "  ❌ 没有标记 → 应用没生效，或根本没点应用" -ForegroundColor Red
-    exit 1
-}
-Write-Host "  ✅ 应用已写入宿主" -ForegroundColor Green
+if (before === 0 && after > 0) { console.log("✅ 标记从无到有 → 本次应用成功"); process.exit(0); }
+if (before > 0 && after === before) { console.log("⚠️ 操作前后相同 → 宿主已处于应用状态，本次结果请看界面提示"); process.exit(3); }
+if (after < before) { console.log("❌ 标记减少 → 补丁可能被还原"); process.exit(1); }
+if (after > before) { console.log("✅ 标记增加 → 本次有新写入"); process.exit(0); }
+' "$BEFORE"
 ```
 
-#### 期望输出
+**退出码对照**：
 
-```
-宿主文件: /opt/homebrew/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-system-prompt/lib/index.js
-[dsh-purge] 标记: 6 处
-✅ 应用已写入宿主
-```
-
-**标记数是 0 → 应用没成功。**
+| 码 | 含义 |
+|---|---|
+| `0` | ✅ 本次应用成功（全新或标记增加） |
+| `1` | ❌ 找不到宿主 / 标记减少 |
+| `2` | ⚠️ 没记录操作前，无法判断 |
+| `3` | ⚠️ 已有标记且未变化，需看界面提示 |
 
 ---
 
