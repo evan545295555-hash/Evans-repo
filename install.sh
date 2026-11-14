@@ -41,10 +41,10 @@ INSTALLED="$(npm ls -g @deepseek-ai/dsh --depth=0 2>/dev/null | grep -oE '@deeps
 if [ -n "$INSTALLED" ]; then
   # 实测 0.2.0-rc.2 与 0.2.1-rc.2 都能完整应用，任意 0.2.x 保留
   need_host=0
-  ok "宿主 $INSTALLED（兼容）"
+  ok "宿主 ${INSTALLED}（兼容）"
   case "$INSTALLED" in
     0.2.*) ;;
-    *) warn "宿主是 $INSTALLED，本插件面向 0.2.x；如遇异常再升级" ;;
+    *) warn "宿主是 ${INSTALLED}，本插件面向 0.2.x；如遇异常再升级" ;;
   esac
 elif command -v dsh >/dev/null 2>&1; then
   cur="$(dsh --version 2>/dev/null | tr -d '[:space:]' || true)"
