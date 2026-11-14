@@ -120,7 +120,10 @@ jobs:
             local name="$1" expect="$2"
             local B A RC
             B=$(hash_file "$T/profiles/web/cordis.patch.yml")
-            DSH_HOME="$T" node scripts/clean-cordis-patch.cjs >/tmp/out 2>&1; RC=$?
+            set +e
+            DSH_HOME="$T" node scripts/clean-cordis-patch.cjs >/tmp/out 2>&1
+            RC=$?
+            set -e
             A=$(hash_file "$T/profiles/web/cordis.patch.yml")
             if [ "$expect" = "fail" ]; then
               if [ "$RC" != "0" ] && [ "$B" = "$A" ]; then
@@ -166,14 +169,16 @@ jobs:
                 - id: keep-me
                   name: keep
           YAML
+          set +e
           DSH_HOME="$T" node scripts/clean-cordis-patch.cjs >/dev/null 2>&1
+          set -e
           grep -q "keep-me" "$T/profiles/web/cordis.patch.yml" && { echo "  OK  正常结构: 无关插件保留"; P=$((P+1)); } || { echo "  FAIL 正常结构"; F=$((F+1)); }
           grep -q "id: dsh-purge" "$T/profiles/web/cordis.patch.yml" && { echo "  FAIL purge 未删"; F=$((F+1)); } || { echo "  OK  正常结构: purge 已删"; P=$((P+1)); }
 
           rm -rf "$T"
           echo ""
           echo "异常结构专项: 通过 $P / 失败 $F"
-          [ "$F" -gt 0 ] && exit 1
+          if [ "$F" -gt 0 ]; then exit 1; fi
           exit 0
 
       - name: 完整流程（异常 YAML 时不删任何东西）
@@ -207,8 +212,10 @@ jobs:
           echo '{}' > "$T/redteam/preset-declare.json"
 
           FH=$(mktemp -d)
+          set +e
           HOME="$FH" DSH_HOME="$T" bash "$FAKE_REPO/scripts/clean-all.sh" --yes > /tmp/pc.log 2>&1
           RC=$?
+          set -e
 
           P=0; F=0
           [ "$RC" != "0" ] && { echo "  OK  退出码非 0"; P=$((P+1)); } || { echo "  FAIL 退出码为 0"; F=$((F+1)); }
@@ -222,15 +229,17 @@ jobs:
           echo '{"dsh":{"profile":{"bundles":["dsh-purge"]}}}' > "$T2/profiles/web/package.json"
           printf 'patches:\n  - insert:\n      - id: dsh-purge\n        name: dsh-purge\n' > "$T2/profiles/web/cordis.patch.yml"
           echo '{}' > "$T2/redteam/preset-declare.json"
+          set +e
           HOME="$FH" DSH_HOME="$T2" bash "$FAKE_REPO/scripts/clean-all.sh" --yes > /tmp/ok.log 2>&1
           RC2=$?
+          set -e
           [ "$RC2" = "0" ] && { echo "  OK  正常结构完成清理"; P=$((P+1)); } || { echo "  FAIL 正常结构失败"; tail -5 /tmp/ok.log; F=$((F+1)); }
           [ -d "$T2/profiles/web/node_modules/dsh-purge" ] && { echo "  FAIL 插件目录未删"; F=$((F+1)); } || { echo "  OK  插件目录已删"; P=$((P+1)); }
 
           rm -rf "$T" "$T2" "$FH" "$FAKE_REPO" /tmp/pc.log /tmp/ok.log
           echo ""
           echo "完整流程: 通过 $P / 失败 $F"
-          [ "$F" -gt 0 ] && exit 1
+          if [ "$F" -gt 0 ]; then exit 1; fi
           exit 0
 
       - name: 进程识别（不执行 kill）
@@ -260,13 +269,15 @@ jobs:
           echo "$OUT" | grep -qE "^(DSH   |other )PID=$C( |$)" && { echo "  OK  普通 node(PID=$C)未被判为 DSH"; P=$((P+1)); } || { echo "  FAIL  普通 node 未出现"; F=$((F+1)); }
 
           # 测试启动的进程由测试按 PID 收尾
-          kill -9 "$A" "$B" "$C" 2>/dev/null || true
-          wait 2>/dev/null || true
+          set +e
+          kill -9 "$A" "$B" "$C" 2>/dev/null
+          wait 2>/dev/null
+          set -e
 
           rm -rf "$PT"
           echo ""
           echo "进程识别: 通过 $P / 失败 $F"
-          [ "$F" -gt 0 ] && exit 1
+          if [ "$F" -gt 0 ]; then exit 1; fi
           exit 0
 
       - name: 拒绝清理（目标实例仍在时）
@@ -302,8 +313,10 @@ jobs:
           BEFORE=$(hash_tree "$T")
 
           FH=$(mktemp -d)
+          set +e
           HOME="$FH" DSH_HOME="$T" bash "$FAKE_REPO/scripts/clean-all.sh" --yes > /tmp/rej.log 2>&1
           RC=$?
+          set -e
 
           AFTER=$(hash_tree "$T")
 
@@ -315,7 +328,7 @@ jobs:
           rm -rf "$T" "$FH" "$FAKE_REPO" /tmp/rej.log
           echo ""
           echo "拒绝清理: 通过 $P / 失败 $F"
-          [ "$F" -gt 0 ] && exit 1
+          if [ "$F" -gt 0 ]; then exit 1; fi
           exit 0
 
   # ══════════════════════════════════════════════════════════════
