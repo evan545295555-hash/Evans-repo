@@ -282,26 +282,64 @@ jobs:
           echo 'setInterval(()=>{},60000)' > "$PT/@deepseek-ai/dsh/lib/bin.js"
 
           node "$PT/deepseek-tools/unrelated.js" &
-          A=$!
           node "$PT/@deepseek-ai/dsh/lib/bin.js" &
-          B=$!
           node -e 'setInterval(()=>{},60000)' &
-          C=$!
-          sleep 2
+          sleep 3
 
-          OUT=$(DSH_PROC_ISOLATE="" bash scripts/list-dsh-procs.sh 2>/dev/null)
+          # ⚠️ 不用 $!：Windows Git Bash 拿到的是 wrapper PID，
+          # detect-dsh-procs.ps1 用 Get-CimInstance 拿的是真实 node.exe PID。
+          # 必须从输出里按测试路径反查。
+          set +e
+          OUT=$(DSH_PROC_ISOLATE="" bash scripts/list-dsh-procs.sh 2>&1)
+          LIST_RC=$?
+          set -e
+
+          echo "  [diag] list-dsh-procs.sh 退出码: $LIST_RC"
+          echo "  [diag] 输出行数: $(printf '%s\n' "$OUT" | wc -l)"
+
+          find_pid() {
+            local hit
+            hit="$(printf '%s\n' "$OUT" | grep -F "$1" 2>/dev/null | head -1)" || true
+            [ -z "$hit" ] && { printf ''; return 0; }
+            printf '%s\n' "$hit" | sed -n 's/.*PID=\([0-9][0-9]*\).*/\1/p' || true
+            return 0
+          }
+          A="$(find_pid 'deepseek-tools/unrelated.js')" || true
+          B="$(find_pid '@deepseek-ai/dsh/lib/bin.js')" || true
+
+          echo "  [diag] 反查 A(无关)=${A:-未找到}  B(DSH)=${B:-未找到}"
+          if [ -z "$A" ] || [ -z "$B" ]; then
+            echo "  [diag] list-dsh-procs.sh 输出前 10 行:"
+            printf '%s\n' "$OUT" | head -10 | sed 's/^/       /' || true
+          fi
 
           P=0; F=0
-          # 用 PID 匹配，避免命令行被截断导致误判
-          echo "$OUT" | grep -qE "^DSH   PID=$B( |$)" && { echo "  OK  目标实例(PID=$B)被识别为 DSH"; P=$((P+1)); } || { echo "  FAIL 目标实例(PID=$B)未被识别"; F=$((F+1)); }
-          echo "$OUT" | grep -qE "^DSH   PID=$A( |$)" && { echo "  FAIL  无关进程(PID=$A)被判为 DSH"; F=$((F+1)); } || { echo "  OK  无关进程(PID=$A)未被判为 DSH"; P=$((P+1)); }
-          echo "$OUT" | grep -qE "^other PID=$A( |\\[|$)" && { echo "  OK  无关进程(PID=$A)标为 other"; P=$((P+1)); } || { echo "  FAIL  无关进程(PID=$A)未标 other"; F=$((F+1)); }
-          echo "$OUT" | grep -qE "^(DSH   |other )PID=$C( |$)" && { echo "  OK  普通 node(PID=$C)未被判为 DSH"; P=$((P+1)); } || { echo "  FAIL  普通 node 未出现"; F=$((F+1)); }
+          if [ -n "$B" ] && printf '%s\n' "$OUT" | grep -qE "^DSH   PID=$B( |$)"; then
+            echo "  OK  目标实例(PID=$B)被识别为 DSH"; P=$((P+1))
+          else
+            echo "  FAIL 目标实例(PID=${B:-?})未被识别"; F=$((F+1))
+          fi
 
-          # 测试启动的进程由测试按 PID 收尾
+          if [ -n "$A" ]; then
+            if printf '%s\n' "$OUT" | grep -qE "^DSH   PID=$A( |$)"; then
+              echo "  FAIL  无关进程(PID=$A)被判为 DSH"; F=$((F+1))
+            else
+              echo "  OK  无关进程(PID=$A)未被判为 DSH"; P=$((P+1))
+            fi
+            if printf '%s\n' "$OUT" | grep -qE "^other PID=$A( |\\[|$)"; then
+              echo "  OK  无关进程(PID=$A)标为 other"; P=$((P+1))
+            else
+              echo "  FAIL  无关进程(PID=$A)未标 other"; F=$((F+1))
+            fi
+          else
+            echo "  FAIL 无关进程未被识别"; F=$((F+1))
+          fi
+
+          # 收尾：只用反查到的 PID，不用 pkill（会匹配到自己）
+          # 不要 wait：它会等所有子进程，包括不是我们启动的那些
           set +e
-          kill -9 "$A" "$B" "$C" 2>/dev/null
-          wait 2>/dev/null
+          [ -n "$A" ] && kill -9 "$A" 2>/dev/null
+          [ -n "$B" ] && kill -9 "$B" 2>/dev/null
           set -e
 
           rm -rf "$PT"
