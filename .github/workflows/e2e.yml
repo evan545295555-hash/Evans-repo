@@ -69,6 +69,31 @@ jobs:
         run: node scripts/check-scripts.mjs
 
   # ══════════════════════════════════════════════════════════════
+  # L2 失败场景自愈：已装/装坏了能不能修回来
+  # ══════════════════════════════════════════════════════════════
+  recovery:
+    name: L2 失败场景自愈
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: 装宿主（供 test-recovery.sh 使用 npm root -g）
+        timeout-minutes: 20
+        run: |
+          npm i -g @deepseek-ai/dsh@0.2.1-rc.2 --ignore-scripts
+          npm i -g @deepseek-ai/dsh@0.2.1-rc.2 \
+            --allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,node-pty,@google/genai,protobufjs
+
+      - name: 七个失败场景自愈测试
+        timeout-minutes: 15
+        run: bash scripts/test-recovery.sh
+
+  # ══════════════════════════════════════════════════════════════
   # L2+L3 Windows：装完真的能跑 dsh web
   # ══════════════════════════════════════════════════════════════
   e2e-windows:

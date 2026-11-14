@@ -75,8 +75,17 @@ Head "4. dsh 命令"
 $dshCmd = Get-Command dsh -EA SilentlyContinue
 if ($dshCmd) {
     Info "路径: $($dshCmd.Source)"
-    if ($dshCmd.Source -like "$npmRoot*") { Ok "来自 npm 全局（正确）" }
-    else { Warn2 "不在 npm 全局目录，可能是别的安装" }
+    # npm root -g = <prefix>\node_modules，命令在 <prefix>\dsh.cmd
+    # 两者是兄弟，不能用前缀比较
+    $all = @(Get-Command dsh -All -EA SilentlyContinue)
+    if ($all.Count -gt 1) {
+        Warn2 "发现 $($all.Count) 个 dsh，可能有多套安装："
+        $all | ForEach-Object { Info "    $($_.Source)" }
+    } elseif ($dshCmd.Source -like "*\nodejs\dsh.cmd" -or $dshCmd.Source -like "$npmRoot\..\dsh.cmd" -or (Split-Path $dshCmd.Source -Parent) -eq (Split-Path $npmRoot -Parent)) {
+        Ok "来自当前 Node 安装（正确）"
+    } else {
+        Warn2 "不在当前 Node 安装下，可能有多套"
+    }
 } else {
     Bad "dsh 命令不存在"
 }

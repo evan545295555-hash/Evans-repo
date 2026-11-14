@@ -81,9 +81,12 @@ head_ "4. dsh 命令"
 DSH_PATH="$(command -v dsh 2>/dev/null || true)"
 if [ -n "$DSH_PATH" ]; then
   info "路径: $DSH_PATH"
+  # npm root -g = <prefix>/lib/node_modules，而命令在 <prefix>/bin/dsh
+  # 两者是兄弟目录，不能用前缀比较
+  NODE_PREFIX="$(dirname "$(dirname "$NPM_ROOT")")"
   case "$DSH_PATH" in
-    "$NPM_ROOT"*) ok "来自 npm 全局（正确）" ;;
-    *)            warn "不在 npm 全局目录，可能是别的安装" ;;
+    "$NODE_PREFIX"/*) ok "来自当前 Node 安装（正确）" ;;
+    *)                warn "不在当前 Node 安装下，可能有多套：$(command -v -a dsh 2>/dev/null | tr '\n' ' ')" ;;
   esac
 else
   bad "dsh 命令不存在"

@@ -130,23 +130,29 @@ if [ ! -f package.json ]; then
   ok "已创建最小 package.json"
 fi
 
-# ── 4.5) 确保 profile 有默认 bundles ──────────────────────
-# 手动创建的 package.json 不带 bundles，宿主会缺少 base/web-app，
-# 导致插件等不到 agentPresets 服务（phase=waiting-registry）。
-if ! node -e "
-  const p=require('./package.json');
-  const b=p.dsh && p.dsh.profile && p.dsh.profile.bundles;
-  process.exit(Array.isArray(b) && b.length ? 0 : 1);
-" 2>/dev/null; then
-  node -e "
-    const fs=require('fs');
-    const p=JSON.parse(fs.readFileSync('package.json','utf8'));
-    p.dsh = p.dsh || {};
-    p.dsh.profile = p.dsh.profile || {};
-    p.dsh.profile.bundles = ['@deepseek-ai/dsh-base','@deepseek-ai/dsh-web-app'];
-    fs.writeFileSync('package.json', JSON.stringify(p,null,2)+'\n');
-  "
-  ok "已补默认 bundles"
+# ── 4.5) 确保 base 与 web-app 一定在 bundles 里 ────────────
+# 只补「bundles 为空」是不够的：用户装过别的插件、或手改过配置后，
+# bundles 可能有值但缺 base/web-app，宿主就等不到 agentPresets 服务
+# （表现为 preset-declare.json 的 phase=waiting-registry）。
+BUNDLE_FIX="$(node -e "
+const fs=require('fs');
+const p=JSON.parse(fs.readFileSync('package.json','utf8'));
+p.dsh=p.dsh||{}; p.dsh.profile=p.dsh.profile||{};
+let b=Array.isArray(p.dsh.profile.bundles)?p.dsh.profile.bundles.slice():[];
+let changed=false;
+for (const need of ['@deepseek-ai/dsh-base','@deepseek-ai/dsh-web-app']) {
+  if (!b.includes(need)) { b.unshift(need); changed=true; }
+}
+if (changed) {
+  p.dsh.profile.bundles=b;
+  fs.writeFileSync('package.json', JSON.stringify(p,null,2)+'\n');
+  console.log('fixed');
+}
+" 2>/dev/null || echo "")"
+if [ "$BUNDLE_FIX" = "fixed" ]; then
+  ok "已补齐缺失的 base / web-app"
+else
+  ok "bundles 已含 base / web-app"
 fi
 
 # ── 5) 下载插件包 ──────────────────────────────────────────
@@ -157,6 +163,15 @@ ok "已下载 $(du -h "$TMP" | cut -f1)"
 
 # ── 6) npm 直装（绕开 dsh plugin，与 Windows 版同一套逻辑）──
 say "安装插件到 profile"
+
+# 升级旧版必须先删包：package-lock.json 里已有 dsh-purge 记录时，
+# npm 会认为 "already satisfied" 而跳过重装（--force 也无效，实测仍是旧版）。
+PLUGIN_INSTALLED_VER="$(node -p "try{require('$PROFILE_DIR/node_modules/dsh-purge/package.json').version}catch(e){''}" 2>/dev/null || echo "")"
+if [ -n "$PLUGIN_INSTALLED_VER" ] && [ "$PLUGIN_INSTALLED_VER" != "$PLUGIN_VERSION" ]; then
+  say "检测到已装 ${PLUGIN_INSTALLED_VER}，先移除再装 ${PLUGIN_VERSION}"
+  rm -rf "$PROFILE_DIR/node_modules/dsh-purge"
+fi
+
 npm install --save --ignore-scripts "$TMP" >/dev/null 2>&1 || die "npm install 失败"
 [ -f node_modules/dsh-purge/package.json ] || die "包未就位：node_modules/dsh-purge 不存在"
 

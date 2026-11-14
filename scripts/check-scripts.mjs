@@ -24,7 +24,7 @@ function read(name) {
 
 // ── 1. 变量紧跟中文（C.UTF-8 下 bash 会当成变量名的一部分）──────────
 console.log("\n[1] 变量紧跟中文检查");
-for (const name of ["install.sh", "diagnose.sh"]) {
+for (const name of ["install.sh", "diagnose.sh", "scripts/test-recovery.sh"]) {
   const t = read(name);
   if (!t) {
     console.log(`  ${name} 不存在，跳过`);

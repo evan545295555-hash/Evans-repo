@@ -150,19 +150,29 @@ if (-not (Test-Path "package.json")) {
   Ok "已创建最小 package.json"
 }
 
-# ── 4.5) 确保 profile 有默认 bundles ──────────────────────
-$hasBundles = $false
+# ── 4.5) 确保 base 与 web-app 一定在 bundles 里 ────────────
+# 只补「bundles 为空」是不够的：用户装过别的插件、或手改过配置后，
+# bundles 可能有值但缺 base/web-app，宿主就等不到 agentPresets 服务
+# （表现为 preset-declare.json 的 phase=waiting-registry）。
+$bundleFixed = $false
 try {
-  $pj = Get-Content "package.json" -Raw | ConvertFrom-Json
-  if ($pj.dsh -and $pj.dsh.profile -and $pj.dsh.profile.bundles -and $pj.dsh.profile.bundles.Count -gt 0) { $hasBundles = $true }
-} catch { }
-if (-not $hasBundles) {
   $pj = Get-Content "package.json" -Raw | ConvertFrom-Json
   if (-not $pj.dsh) { $pj | Add-Member -NotePropertyName dsh -NotePropertyValue ([pscustomobject]@{}) -Force }
   if (-not $pj.dsh.profile) { $pj.dsh | Add-Member -NotePropertyName profile -NotePropertyValue ([pscustomobject]@{}) -Force }
-  $pj.dsh.profile | Add-Member -NotePropertyName bundles -NotePropertyValue @('@deepseek-ai/dsh-base','@deepseek-ai/dsh-web-app') -Force
-  $pj | ConvertTo-Json -Depth 10 | Set-Content package.json -Encoding utf8
-  Ok "已补默认 bundles"
+  $b = @()
+  if ($pj.dsh.profile.bundles) { $b = @($pj.dsh.profile.bundles) }
+  foreach ($need in @('@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app')) {
+    if ($b -notcontains $need) { $b = @($need) + $b; $bundleFixed = $true }
+  }
+  if ($bundleFixed) {
+    $pj.dsh.profile | Add-Member -NotePropertyName bundles -NotePropertyValue $b -Force
+    $pj | ConvertTo-Json -Depth 10 | Set-Content package.json -Encoding utf8
+    Ok "已补齐缺失的 base / web-app"
+  } else {
+    Ok "bundles 已含 base / web-app"
+  }
+} catch {
+  Warn "无法检查 bundles：$($_.Exception.Message)"
 }
 
 # ── 5) 下载插件包 ──────────────────────────────────────────
@@ -179,6 +189,19 @@ Ok "已下载 $mb MB"
 # ── 6) npm 直装 ────────────────────────────────────────────
 # 必须绕开 dsh plugin：实测 Windows 上它返回 exit 0 但什么都不装。
 Say "安装插件到 profile"
+
+# 升级旧版必须先删包：package-lock.json 里已有 dsh-purge 记录时，
+# npm 会认为 "already satisfied" 而跳过重装（--force 也无效，实测仍是旧版）。
+$pluginInstalledVer = ""
+try {
+  $pj = Join-Path $profileDir "node_modules\dsh-purge\package.json"
+  if (Test-Path $pj) { $pluginInstalledVer = (Get-Content $pj -Raw | ConvertFrom-Json).version }
+} catch { }
+if ($pluginInstalledVer -and $pluginInstalledVer -ne $PluginVersion) {
+  Say "检测到已装 $pluginInstalledVer，先移除再装 $PluginVersion"
+  Remove-Item -Recurse -Force (Join-Path $profileDir "node_modules\dsh-purge") -EA SilentlyContinue
+}
+
 npm install --save --ignore-scripts $tmp 2>&1 | Select-Object -Last 5
 if ($LASTEXITCODE -ne 0) { Die "npm install 失败：$LASTEXITCODE" }
 if (-not (Test-Path "node_modules\dsh-purge\package.json")) {
