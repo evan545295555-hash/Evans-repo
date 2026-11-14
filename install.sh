@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # dsh-purge 1.1.71-rc2.1 一键安装（macOS / Linux）
-# 用法： curl -fsSL <raw 地址> | bash
+# 用法（推荐，能发现下载失败）：
+#   curl -fsSL -o /tmp/dsh-install.sh <raw 地址> && bash /tmp/dsh-install.sh
+# 用法（旧写法，下载失败可能静默成功，不推荐）：
+#   curl -fsSL <raw 地址> | bash
 set -euo pipefail
 
 PLUGIN_VERSION="1.1.71-rc2.1"

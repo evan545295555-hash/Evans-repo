@@ -1,7 +1,7 @@
 # dsh-purge 修复指南
 
 > 适用：装过 dsh-purge 但用不了、报错、或装了一半
-> 从没装过 → 看 [dsh-purge-安装指南.md](./dsh-purge-安装指南.md)
+> 从没装过 → 看 [安装指南](https://github.com/evan545295555-hash/Evans-repo/blob/master/docs/dsh-purge-%E5%AE%89%E8%A3%85%E6%8C%87%E5%8D%97.md)
 
 ---
 
@@ -12,13 +12,21 @@
 ### Windows
 
 ```powershell
-irm https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/diagnose.ps1 | iex
+$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/diagnose.ps1"
+$f = "$env:TEMP\dsh-diagnose.ps1"
+Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
+if ((Get-Item $f).Length -lt 500) { throw "下载不完整，请重试" }
+& $f
 ```
 
 ### macOS
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/diagnose.sh | bash
+u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/diagnose.sh"
+f="/tmp/dsh-diagnose.sh"
+curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
+[ "$(wc -c <"$f")" -ge 500 ] || { echo "下载不完整"; exit 1; }
+bash "$f"
 ```
 
 ### 这是只读脚本
@@ -135,12 +143,20 @@ npm -v
 
 ```powershell
 # Windows
-irm https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/install.ps1 | iex
+$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.ps1"
+$f = "$env:TEMP\dsh-install.ps1"
+Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
+if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
+& $f
 ```
 
 ```bash
 # macOS
-curl -fsSL https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/install.sh | bash
+u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.sh"
+f="/tmp/dsh-install.sh"
+curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
+[ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
+bash "$f"
 ```
 
 ## 验证
@@ -185,12 +201,20 @@ node -p "require(require('os').homedir()+'/.dsh/profiles/web/node_modules/dsh-pu
 
 ```powershell
 # Windows
-irm https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/install.ps1 | iex
+$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.ps1"
+$f = "$env:TEMP\dsh-install.ps1"
+Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
+if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
+& $f
 ```
 
 ```bash
 # macOS
-curl -fsSL https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/install.sh | bash
+u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.sh"
+f="/tmp/dsh-install.sh"
+curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
+[ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
+bash "$f"
 ```
 
 **新版会输出这一行**：
@@ -206,13 +230,21 @@ curl -fsSL https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/maste
 ```powershell
 # Windows
 Remove-Item -Recurse -Force "$env:USERPROFILE\.dsh\profiles\web\node_modules\dsh-purge"
-irm https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/install.ps1 | iex
+$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.ps1"
+$f = "$env:TEMP\dsh-install.ps1"
+Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
+if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
+& $f
 ```
 
 ```bash
 # macOS
 rm -rf ~/.dsh/profiles/web/node_modules/dsh-purge
-curl -fsSL https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/install.sh | bash
+u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.sh"
+f="/tmp/dsh-install.sh"
+curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
+[ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
+bash "$f"
 ```
 
 ## 验证
@@ -339,12 +371,20 @@ pty.node   或   conpty.node
 
 ```powershell
 # Windows
-irm https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/install.ps1 | iex
+$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.ps1"
+$f = "$env:TEMP\dsh-install.ps1"
+Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
+if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
+& $f
 ```
 
 ```bash
 # macOS
-curl -fsSL https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/install.sh | bash
+u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.sh"
+f="/tmp/dsh-install.sh"
+curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
+[ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
+bash "$f"
 ```
 
 ---
@@ -365,12 +405,20 @@ curl -fsSL https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/maste
 
 ```powershell
 # Windows
-irm https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/install.ps1 | iex
+$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.ps1"
+$f = "$env:TEMP\dsh-install.ps1"
+Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
+if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
+& $f
 ```
 
 ```bash
 # macOS
-curl -fsSL https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/install.sh | bash
+u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.sh"
+f="/tmp/dsh-install.sh"
+curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
+[ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
+bash "$f"
 ```
 
 **新版会输出**：
@@ -808,12 +856,20 @@ echo "宿主已清"
 
 ```powershell
 # Windows
-irm https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/diagnose.ps1 | iex
+$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/diagnose.ps1"
+$f = "$env:TEMP\dsh-diagnose.ps1"
+Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
+if ((Get-Item $f).Length -lt 500) { throw "下载不完整，请重试" }
+& $f
 ```
 
 ```bash
 # macOS
-curl -fsSL https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/diagnose.sh | bash
+u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/diagnose.sh"
+f="/tmp/dsh-diagnose.sh"
+curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
+[ "$(wc -c <"$f")" -ge 500 ] || { echo "下载不完整"; exit 1; }
+bash "$f"
 ```
 
 **期望**：
@@ -828,7 +884,7 @@ curl -fsSL https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/maste
 
 ## 第 8 步：按全新安装来
 
-看 [dsh-purge-安装指南.md](./dsh-purge-安装指南.md) 从第 1 步开始。
+看 [安装指南](https://github.com/evan545295555-hash/Evans-repo/blob/master/docs/dsh-purge-%E5%AE%89%E8%A3%85%E6%8C%87%E5%8D%97.md) 从第 1 步开始。
 
 ---
 
@@ -982,12 +1038,20 @@ irm : 基础连接已经关闭
 
 **Windows**
 ```powershell
-irm https://ghfast.top/https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/install.ps1 | iex
+$u = "https://ghfast.top/https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.ps1"
+$f = "$env:TEMP\dsh-install.ps1"
+Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
+if ((Get-Item $f).Length -lt 1000) { throw "下载不完整，请重试" }
+& $f
 ```
 
 **macOS**
 ```bash
-curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/install.sh | bash
+u="https://ghfast.top/https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/install.sh"
+f="/tmp/dsh-install.sh"
+curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
+[ "$(wc -c <"$f")" -ge 1000 ] || { echo "下载不完整"; exit 1; }
+bash "$f"
 ```
 
 ## 或者先下载再执行（更稳）
@@ -1013,12 +1077,20 @@ bash /tmp/install.sh
 
 ```powershell
 # Windows
-irm https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/diagnose.ps1 | iex
+$u = "https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/diagnose.ps1"
+$f = "$env:TEMP\dsh-diagnose.ps1"
+Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
+if ((Get-Item $f).Length -lt 500) { throw "下载不完整，请重试" }
+& $f
 ```
 
 ```bash
 # macOS
-curl -fsSL https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/master/diagnose.sh | bash
+u="https://raw.githubusercontent.com/evan545295555-hash/Evans-repo/__COMMIT_SHA__/diagnose.sh"
+f="/tmp/dsh-diagnose.sh"
+curl -fsSL --retry 3 -o "$f" "$u" || { echo "下载失败"; exit 1; }
+[ "$(wc -c <"$f")" -ge 500 ] || { echo "下载不完整"; exit 1; }
+bash "$f"
 ```
 
 **必须全部 `[OK]`**：

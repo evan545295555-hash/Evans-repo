@@ -1,5 +1,11 @@
 # dsh-purge 1.1.71-rc2.1 一键安装（Windows PowerShell）
-# 用法：irm <raw 地址> | iex
+# 用法（推荐，能发现下载失败）：
+#   $u = "<raw 地址>"; $f = "$env:TEMP\dsh-install.ps1"
+#   Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
+#   if ((Get-Item $f).Length -lt 1000) { throw "下载不完整" }
+#   & $f
+# 用法（旧写法，下载失败可能静默成功，不推荐）：
+#   irm <raw 地址> | iex
 $ErrorActionPreference = "Stop"
 
 $PluginVersion = "1.1.71-rc2.1"
