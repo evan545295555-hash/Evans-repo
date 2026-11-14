@@ -242,7 +242,16 @@ jobs:
           HOME="$FH" DSH_HOME="$T2" bash "$FAKE_REPO/scripts/clean-all.sh" --yes > /tmp/ok.log 2>&1
           RC2=$?
           set -e
-          [ "$RC2" = "0" ] && { echo "  OK  正常结构完成清理"; P=$((P+1)); } || { echo "  FAIL 正常结构失败"; tail -5 /tmp/ok.log; F=$((F+1)); }
+          if [ "$RC2" != "0" ]; then
+            echo "  FAIL 正常结构失败（退出码 $RC2）"
+            echo "       [diag] 正常结构路径的 clean-all.sh 输出:"
+            head -40 /tmp/ok.log 2>&1 | sed 's/^/         /' || true
+            echo "       [diag] T2 目录内容:"
+            ls -R "$T2" 2>&1 | head -10 | sed 's/^/         /' || true
+            F=$((F+1))
+          else
+            echo "  OK  正常结构完成清理"; P=$((P+1))
+          fi
           [ -d "$T2/profiles/web/node_modules/dsh-purge" ] && { echo "  FAIL 插件目录未删"; F=$((F+1)); } || { echo "  OK  插件目录已删"; P=$((P+1)); }
 
           rm -rf "$T" "$T2" "$FH" "$FAKE_REPO" /tmp/pc.log /tmp/ok.log

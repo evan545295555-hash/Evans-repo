@@ -251,8 +251,9 @@ else
   W="$DSH/profiles/web"
   [ -d "$W/node_modules/dsh-purge" ] && warn "插件目录仍在" || ok "插件目录已清"
   if [ -f "$W/cordis.patch.yml" ]; then
-    N=$(grep -c "dsh-purge" "$W/cordis.patch.yml" 2>/dev/null || echo 0)
-    [ "$N" = "0" ] && ok "patch.yml 无残留" || warn "patch.yml 还有 $N 处 dsh-purge"
+    N=0
+    grep -q "dsh-purge" "$W/cordis.patch.yml" 2>/dev/null && N=1
+    [ "$N" = "0" ] && ok "patch.yml 无残留" || warn "patch.yml 还有 dsh-purge"
   fi
   if [ -f "$W/package.json" ]; then
     B=$(node -p "try{require('$W/package.json').dsh.profile.bundles.filter(x=>x.includes('purge')).length}catch(e){0}" 2>/dev/null || echo 0)
