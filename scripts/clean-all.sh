@@ -16,6 +16,18 @@ set -uo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 DSH="${DSH_HOME:-$HOME/.dsh}"
+
+# Windows Git Bash 的 /tmp/xxx 路径，原生 node 不认，需要转成 C:\...
+# 文件操作用 $DSH（bash 认），传给 node 的用 $DSH_NODE
+DSH_NODE="$DSH"
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*)
+    if command -v cygpath >/dev/null 2>&1; then
+      DSH_NODE="$(cygpath -w "$DSH" 2>/dev/null)" || DSH_NODE="$DSH"
+      [ -z "$DSH_NODE" ] && DSH_NODE="$DSH"
+    fi
+    ;;
+esac
 DRY=0
 YES=0
 for a in "$@"; do
@@ -168,7 +180,7 @@ else
 
   # 预检 YAML 结构
   if [ -f "$REPO/scripts/clean-cordis-patch.cjs" ] && [ -f "$DSH/profiles/web/cordis.patch.yml" ]; then
-    if OUT=$(DSH_HOME="$DSH" node "$REPO/scripts/clean-cordis-patch.cjs" --check-only 2>&1); then
+    if OUT=$(DSH_HOME="$DSH_NODE" node "$REPO/scripts/clean-cordis-patch.cjs" --check-only 2>&1); then
       gray "cordis.patch.yml: $OUT"
     else
       printf '\033[1;31m  ✗ cordis.patch.yml 预检失败\033[0m\n'
@@ -179,10 +191,25 @@ else
 
   # 预检 package.json 可解析
   if [ -f "$DSH/profiles/web/package.json" ]; then
-    if node -e "JSON.parse(require('fs').readFileSync('$DSH/profiles/web/package.json','utf8'))" 2>/dev/null; then
+    set +e
+    PKG_OUT=$(node -e '
+const fs = require("fs");
+try {
+  const d = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  console.log("OK");
+} catch (e) {
+  console.log("ERR|" + e.code + "|" + e.message);
+  process.exit(1);
+}
+' "$DSH_NODE/profiles/web/package.json" 2>&1)
+    PKG_RC=$?
+    set -e
+    if [ "$PKG_RC" = "0" ] && [ "$PKG_OUT" = "OK" ]; then
       gray "package.json: 可解析"
     else
       printf '\033[1;31m  ✗ package.json 解析失败\033[0m\n'
+      gray "    路径: $DSH_NODE/profiles/web/package.json"
+      gray "    输出: $PKG_OUT"
       PRECHECK_FAIL=1
     fi
   fi
@@ -216,7 +243,7 @@ if [ "$DRY" = "1" ]; then
   gray "会移除 - id: dsh-purge / -community / -panel 及其子键"
 else
   if [ -f "$REPO/scripts/clean-cordis-patch.cjs" ]; then
-    DSH_HOME="$DSH" node "$REPO/scripts/clean-cordis-patch.cjs" 2>&1 | sed 's/^/     /'
+    DSH_HOME="$DSH_NODE" node "$REPO/scripts/clean-cordis-patch.cjs" 2>&1 | sed 's/^/     /'
   else
     warn "找不到 clean-cordis-patch.cjs，跳过"
   fi
@@ -228,7 +255,7 @@ if [ "$DRY" = "1" ]; then
   gray "会移除 dsh-purge / -community / -panel 的 bundles 和 dependencies"
 else
   if [ -f "$REPO/scripts/clean-profile-deps.cjs" ]; then
-    DSH_HOME="$DSH" node "$REPO/scripts/clean-profile-deps.cjs" 2>&1 | sed 's/^/     /'
+    DSH_HOME="$DSH_NODE" node "$REPO/scripts/clean-profile-deps.cjs" 2>&1 | sed 's/^/     /'
   else
     warn "找不到 clean-profile-deps.cjs，跳过"
   fi
@@ -256,7 +283,18 @@ else
     [ "$N" = "0" ] && ok "patch.yml 无残留" || warn "patch.yml 还有 dsh-purge"
   fi
   if [ -f "$W/package.json" ]; then
-    B=$(node -p "try{require('$W/package.json').dsh.profile.bundles.filter(x=>x.includes('purge')).length}catch(e){0}" 2>/dev/null || echo 0)
+    B=0
+    set +e
+    BUNDLE_OUT=$(node -e '
+const fs=require("fs");
+try {
+  const d = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  const b = (d.dsh && d.dsh.profile && d.dsh.profile.bundles) || [];
+  console.log(b.filter(x => String(x).includes("purge")).length);
+} catch (e) { console.log("0"); }
+' "$DSH_NODE/profiles/web/package.json" 2>/dev/null)
+    set -e
+    B="${BUNDLE_OUT:-0}"
     [ "$B" = "0" ] && ok "bundles 无 dsh-purge" || warn "bundles 还有 $B 个 dsh-purge"
   fi
 fi
