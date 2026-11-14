@@ -22,6 +22,8 @@ on:
       - "lib/**"
       - "cordis.patch.yml"
       - ".github/workflows/e2e.yml"
+        - "scripts/**"
+        - "docs/**"
   pull_request:
     branches: [main, master]
   workflow_dispatch:
