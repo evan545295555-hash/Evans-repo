@@ -3,7 +3,7 @@
 $ErrorActionPreference = "Stop"
 
 $PluginVersion = "1.1.71-rc2.1"
-$HostVersion   = "0.2.0-rc.2"
+$HostVersion   = "0.2.1-rc.2"
 $PkgUrl = "https://github.com/evan545295555-hash/Evans-repo/releases/download/v$PluginVersion/dsh-purge-$PluginVersion.tgz"
 $DshHomeDir = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE ".dsh" }
 
@@ -89,6 +89,44 @@ if (Test-Path $flatPath) {
   Warn "未找到 dsh-system-prompt，插件可能检测不到宿主"
   Write-Host "    摊平: $flatPath" -ForegroundColor DarkGray
   Write-Host "    嵌套: $nestedPath" -ForegroundColor DarkGray
+}
+
+# ── 2.6) 原生模块构建（自动，无需用户手动）─────────────────
+# npm 11 默认拦截 install/postinstall 脚本，node-pty / koffi 等原生模块
+# 不编译会导致 dsh web 启动失败：Cannot find module ...\pty.node
+$hostVerForRebuild = if ($installedHost) { $installedHost } else { $HostVersion }
+function Test-NativeOk {
+  $dirs = @(
+    (Join-Path $npmRoot "@deepseek-ai\dsh\node_modules\node-pty"),
+    (Join-Path $npmRoot "@deepseek-ai\node-pty"),
+    (Join-Path $npmRoot "node-pty")
+  )
+  foreach ($d in $dirs) {
+    # node-pty 1.x：build\Release\pty.node
+    if (Test-Path (Join-Path $d "build\Release\pty.node")) { return $true }
+    # node-pty 1.2+：prebuilds\<platform>-<arch>\pty.node
+    $pre = Join-Path $d "prebuilds"
+    if (Test-Path $pre) {
+      $hit = Get-ChildItem -Path $pre -Filter "pty.node" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+      if ($hit) { return $true }
+    }
+  }
+  return $false
+}
+
+if (Test-NativeOk) {
+  Ok "原生模块已就绪"
+} else {
+  Say "补跑原生模块构建（node-pty / koffi / protobufjs，约 30 秒）"
+  npm i -g "@deepseek-ai/dsh@$hostVerForRebuild" `
+    --allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,node-pty,@google/genai,protobufjs 2>&1 | Out-Null
+  if (Test-NativeOk) {
+    Ok "原生模块已编译"
+  } else {
+    Warn "node-pty 仍缺失，dsh web 可能起不来"
+    Write-Host "    手动补跑:" -ForegroundColor DarkGray
+    Write-Host "    npm i -g @deepseek-ai/dsh@$hostVerForRebuild --allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,node-pty,@google/genai,protobufjs" -ForegroundColor DarkGray
+  }
 }
 
 # ── 3) profile 目录 ────────────────────────────────────────

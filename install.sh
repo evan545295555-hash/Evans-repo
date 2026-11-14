@@ -4,7 +4,7 @@
 set -euo pipefail
 
 PLUGIN_VERSION="1.1.71-rc2.1"
-HOST_VERSION="0.2.0-rc.2"
+HOST_VERSION="0.2.1-rc.2"
 PKG="https://github.com/evan545295555-hash/Evans-repo/releases/download/v${PLUGIN_VERSION}/dsh-purge-${PLUGIN_VERSION}.tgz"
 DSH_HOME_DIR="${DSH_HOME:-$HOME/.dsh}"
 
@@ -25,15 +25,14 @@ if [ "$NODE_MAJOR" -lt 20 ]; then
 fi
 ok "Node $(node -v)"
 
-# ── 1.5) npm 安装策略必须是 hoisted ────────────────────────
-# 插件按「依赖摊平」检测宿主；nested 布局会被判成"没写进全部宿主"。
-STRATEGY="$(npm config get install-strategy 2>/dev/null | tr -d '[:space:]')"
-if [ "$STRATEGY" != "hoisted" ]; then
-  warn "npm 安装策略是 '$STRATEGY'，改为 hoisted（插件要求摊平布局）"
-  npm config set install-strategy hoisted >/dev/null 2>&1 || die "无法设置 install-strategy"
-  ok "已设为 hoisted"
-else
+# ── 1.5) npm 策略（仅提示）─────────────────────────────────
+# install-strategy=hoisted 只对本地项目生效，全局安装永远嵌套。
+# 这里不再强制修改，避免让用户误以为改了就有用。
+STRATEGY="$(npm config get install-strategy 2>/dev/null | tr -d '[:space:]' || true)"
+if [ "$STRATEGY" = "hoisted" ]; then
   ok "npm 策略 hoisted"
+else
+  printf '\033[0;37m  提示: npm install-strategy=%s（对全局安装无影响，可忽略）\033[0m\n' "${STRATEGY:-未设置}"
 fi
 
 # ── 2) 宿主 ────────────────────────────────────────────────
@@ -60,20 +59,60 @@ if [ "$need_host" -eq 1 ]; then
   ok "宿主已安装"
 fi
 
-# ── 2.5) 布局验证 ─────────────────────────────────────────
+# ── 2.5) 布局检查（仅提示，不阻断）─────────────────────────
+# npm 全局安装默认把依赖嵌套在 <pkg>/node_modules/ 下，这是设计行为；
+# install-strategy=hoisted 只对本地项目生效，全局安装不遵守。
+# 插件本身已兼容两种布局（hostCleanMarkersPresent 有四个候选路径），
+# 所以这里只提示，不重装、不退出。
 NPM_ROOT="$(npm root -g)"
-SP_PATH="$NPM_ROOT/@deepseek-ai/dsh-system-prompt/lib/index.js"
-if [ ! -f "$SP_PATH" ]; then
-  warn "宿主是嵌套布局，插件检测不到。用 hoisted 重装…"
-  npm i -g "@deepseek-ai/dsh@${HOST_VERSION}" --force || die "重装宿主失败"
-  if [ ! -f "$SP_PATH" ]; then
-    die "重装后仍是嵌套布局：$SP_PATH 不存在。
-    请手动执行：npm config set install-strategy hoisted
-                npm i -g @deepseek-ai/dsh@${HOST_VERSION} --force"
-  fi
-  ok "已重装为摊平布局"
+FLAT_PATH="$NPM_ROOT/@deepseek-ai/dsh-system-prompt/lib/index.js"
+NESTED_PATH="$NPM_ROOT/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-system-prompt/lib/index.js"
+if [ -f "$FLAT_PATH" ]; then
+  ok "布局：摊平（hoisted）"
+elif [ -f "$NESTED_PATH" ]; then
+  ok "布局：嵌套（npm 全局默认，插件已兼容）"
+else
+  warn "未找到 dsh-system-prompt，插件可能检测不到宿主"
+  printf '\033[0;37m    摊平: %s\n    嵌套: %s\033[0m\n' "$FLAT_PATH" "$NESTED_PATH"
 fi
-ok "布局检查通过（dsh-system-prompt 在顶层）"
+
+# ── 2.6) 原生模块构建（自动，无需用户手动）──────────────────
+# npm 11 默认拦截 install/postinstall 脚本，node-pty / koffi 等原生模块
+# 不编译会导致 dsh web 启动失败：Cannot find module .../pty.node
+HOST_VER_FOR_REBUILD="${INSTALLED:-$HOST_VERSION}"
+native_ok() {
+  local dirs=(
+    "$NPM_ROOT/@deepseek-ai/dsh/node_modules/node-pty"
+    "$NPM_ROOT/@deepseek-ai/node-pty"
+    "$NPM_ROOT/node-pty"
+  )
+  for d in "${dirs[@]}"; do
+    # node-pty 1.x：build/Release/pty.node
+    [ -f "$d/build/Release/pty.node" ] && return 0
+    # node-pty 1.2+：prebuilds/<platform>-<arch>/pty.node
+    if [ -d "$d/prebuilds" ]; then
+      for f in "$d"/prebuilds/*/pty.node; do
+        [ -f "$f" ] && return 0
+      done
+    fi
+  done
+  return 1
+}
+
+if native_ok; then
+  ok "原生模块已就绪"
+else
+  say "补跑原生模块构建（node-pty / koffi / protobufjs，约 30 秒）"
+  npm i -g "@deepseek-ai/dsh@${HOST_VER_FOR_REBUILD}" \
+    --allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,node-pty,@google/genai,protobufjs \
+    >/dev/null 2>&1 || true
+  if native_ok; then
+    ok "原生模块已编译"
+  else
+    warn "node-pty 仍缺失，dsh web 可能起不来"
+    printf '\033[0;37m    手动补跑:\n    npm i -g @deepseek-ai/dsh@%s --allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,node-pty,@google/genai,protobufjs\033[0m\n' "$HOST_VER_FOR_REBUILD"
+  fi
+fi
 
 # ── 3) profile 目录 ────────────────────────────────────────
 PROFILE_DIR="$DSH_HOME_DIR/profiles/web"
