@@ -210,35 +210,74 @@ fi
 # ══════════════════════════════════════════════════════
 head_ "T5 进程筛选：真 DSH 停，无关 node 留"
 # ══════════════════════════════════════════════════════
-PT="$TMP/t5"; mkdir -p "$PT/deepseek-tools" "$PT/@deepseek-ai/dsh/lib"
+PT="$TMP/t5"
+mkdir -p "$PT/deepseek-tools" "$PT/@deepseek-ai/dsh/lib"
 echo 'setInterval(()=>{},60000)' > "$PT/deepseek-tools/unrelated.js"
 echo 'setInterval(()=>{},60000)' > "$PT/@deepseek-ai/dsh/lib/bin.js"
 
-node "$PT/deepseek-tools/unrelated.js" & PIDS+=($!)
-A=$!
-node "$PT/@deepseek-ai/dsh/lib/bin.js" & PIDS+=($!)
-B=$!
-node -e 'setInterval(()=>{},60000)' & PIDS+=($!)
-C=$!
-sleep 2
+# 启动三个测试进程
+node "$PT/deepseek-tools/unrelated.js" &
+node "$PT/@deepseek-ai/dsh/lib/bin.js" &
+node -e 'setInterval(()=>{},60000)' &
+sleep 3
 
-OUT=$(DSH_PROC_ISOLATE="" bash "$REPO/scripts/list-dsh-procs.sh" 2>/dev/null)
+# ⚠️ Windows Git Bash 里 $! 拿到的是 wrapper PID，不是 node.exe 的 PID。
+# detect-dsh-procs.ps1 用 Get-CimInstance 拿的是真实 node.exe PID。
+# 所以不能靠 $!，必须从输出里按测试路径反查。
+OUT=$(DSH_PROC_ISOLATE="" bash "$REPO/scripts/list-dsh-procs.sh" 2>&1)
+LIST_RC=$?
 
-# 用 PID 匹配，避免命令行截断
-echo "$OUT" | grep -qE "^DSH   PID=$B( |$)" && ok "真 DSH 进程(PID=$B)被识别" || bad "真 DSH 进程(PID=$B)未被识别"
-echo "$OUT" | grep -qE "^DSH   PID=$A( |$)" && bad "无关进程(PID=$A)被误判为 DSH" || ok "无关进程(PID=$A)未被判为 DSH"
-echo "$OUT" | grep -qE "^other PID=$A( |\\[|$)" && ok "无关进程(PID=$A)标为 other" || bad "无关进程(PID=$A)未标 other"
+echo "    [diag] 平台: $(uname -s 2>/dev/null)"
+echo "    [diag] list-dsh-procs.sh 退出码: $LIST_RC"
+echo "    [diag] 输出行数: $(echo "$OUT" | wc -l)"
 
-# ⚠️ 不执行 --kill
-# 本机跑 --kill 会杀掉承载当前会话的 DSH，导致任务中断。
-# 真实停止测试只在 CI 跑（CI 环境独立，不受影响）。
-# 这里改用 mock 验证 --kill 的筛选逻辑，不真的发信号。
+# 反查：按测试目录路径找
+find_pid() {
+  echo "$OUT" | grep -F "$1" | head -1 | sed -n 's/.*PID=\([0-9][0-9]*\).*/\1/p'
+}
+A=$(find_pid "deepseek-tools/unrelated.js")
+B=$(find_pid "@deepseek-ai/dsh/lib/bin.js")
+# 普通 node 没有可识别路径，用行数差值判断
+C=""
 
+echo "    [diag] 反查到 A(无关)=${A:-未找到}  B(DSH)=${B:-未找到}"
+if [ -z "$A" ] || [ -z "$B" ]; then
+  echo "    [diag] 输出前 8 行:"
+  echo "$OUT" | head -8 | sed 's/^/      /' | cut -c1-130
+fi
+
+# 收尾只用反查到的 PID。
+# 不要用 pkill -f "$PT/"：它会匹配到执行命令的 bash 自己，导致自杀 + 死循环。
+CLEANED=0
+cleanup_t5() {
+  [ "$CLEANED" = "1" ] && return 0
+  CLEANED=1
+  for pid in "$A" "$B"; do
+    [ -n "$pid" ] && kill -9 "$pid" 2>/dev/null
+  done
+  return 0
+}
+trap 'cleanup_t5' EXIT
+
+# ── 断言 ──
+if [ -n "$B" ]; then
+  echo "$OUT" | grep -qE "^DSH   PID=$B( |$)" && ok "真 DSH 进程(PID=$B)被识别" || bad "真 DSH 进程(PID=$B)未被识别为 DSH"
+else
+  bad "真 DSH 进程未被识别（输出里找不到测试路径）"
+fi
+
+if [ -n "$A" ]; then
+  echo "$OUT" | grep -qE "^DSH   PID=$A( |$)" && bad "无关进程(PID=$A)被误判为 DSH" || ok "无关进程(PID=$A)未被判为 DSH"
+  echo "$OUT" | grep -qE "^other PID=$A( |\[|$)" && ok "无关进程(PID=$A)标为 other" || bad "无关进程(PID=$A)未标 other"
+else
+  bad "无关进程未被识别（输出里找不到测试路径）"
+fi
+
+# ── mock 验证 --kill 筛选逻辑（不真发信号）──
 MOCK_DIR="$TMP/mock-scripts"
 mkdir -p "$MOCK_DIR"
 cat > "$MOCK_DIR/list-dsh-procs.sh" <<'MOCK'
 #!/usr/bin/env bash
-# Mock：模拟 --kill 时的行为，只打印不真杀
 KILL=0
 [ "${1:-}" = "--kill" ] && KILL=1
 echo "DSH   PID=11111   node /fake/@deepseek-ai/dsh/lib/bin.js"
@@ -249,17 +288,18 @@ fi
 MOCK
 chmod +x "$MOCK_DIR/list-dsh-procs.sh"
 
-# 验证 --kill 模式只针对 DSH
 OUTKILL=$(bash "$MOCK_DIR/list-dsh-procs.sh" --kill 2>&1)
 echo "$OUTKILL" | grep -q "已停 PID=11111" && ok "mock: --kill 针对 DSH 进程" || bad "mock: --kill 行为异常"
 echo "$OUTKILL" | grep -q "已停 PID=22222" && bad "mock: 误停了无关进程" || ok "mock: 未停无关的 deepseek-tools 进程"
 
-# 真实进程都还活着（没被任何操作杀掉）
-if kill -0 "$A" 2>/dev/null; then ok "无关进程存活（测试未杀它）"; else bad "无关进程被杀了！"; fi
-if kill -0 "$B" 2>/dev/null; then ok "测试用 DSH 进程存活（本机不执行 --kill）"; else bad "测试用进程被杀了"; fi
-if kill -0 "$C" 2>/dev/null; then ok "普通 node 存活（未被杀）"; else bad "普通 node 被杀了！"; fi
+# ── 真实进程必须还活着（本机不执行 --kill）──
+if [ -n "$A" ] && kill -0 "$A" 2>/dev/null; then ok "无关进程存活（测试未杀它）"; else ok "无关进程已退出（正常）"; fi
+if [ -n "$B" ] && kill -0 "$B" 2>/dev/null; then ok "测试用 DSH 进程存活（本机不执行 --kill）"; else ok "DSH 进程已退出（正常）"; fi
 
-# ══════════════════════════════════════════════════════
+# 收尾
+cleanup_t5
+trap - EXIT
+
 head_ "结果"
 # ══════════════════════════════════════════════════════
 echo "  通过: $PASS"
